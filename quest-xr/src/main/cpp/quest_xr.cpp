@@ -1,11 +1,10 @@
-// OpenXR bridge for Meta Quest: shows the emulator output on a quad layer and
-// forwards Touch controller input to Java.
+// OpenXR bridge for Meta Quest: shows the emulator output and an in-VR menu on quad
+// layers, optionally over passthrough, and forwards Touch controller input to Java.
 //
-// The emulator keeps rendering with its own EGL context into an android.view.Surface
-// instead of its SurfaceView. That surface is either
-//  - the Surface of an XR_KHR_android_surface_swapchain (zero copy), or
-//  - a SurfaceTexture owned by Java, which the frame thread copies into a regular
-//    OpenGL ES swapchain every frame (fallback when the runtime rejects the first).
+// Each quad is fed by an android.graphics.SurfaceTexture owned by Java. The emulator
+// (or the menu) draws into a Surface created from it; the frame thread copies the
+// latest buffer into an OpenGL ES swapchain every frame. Meta's runtime rejects
+// XR_KHR_android_surface_swapchain, so there is no zero-copy path.
 
 #include <jni.h>
 #include <android/log.h>
@@ -19,9 +18,10 @@
 
 #include <atomic>
 #include <cstring>
+#include <mutex>
 #include <thread>
-#include <vector>
 #include <unistd.h>
+#include <vector>
 
 #define TAG "QuestXr"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
@@ -38,6 +38,13 @@ enum Buttons {
     BTN_MENU = 1 << 4,
     BTN_LSTICK = 1 << 5,
     BTN_RSTICK = 1 << 6,
+};
+
+// Must match QuestXr.java
+enum QuadId {
+    QUAD_GAME = 0,
+    QUAD_MENU = 1,
+    QUAD_COUNT
 };
 
 enum ActionId {
@@ -69,6 +76,39 @@ const ActionDef kActions[ACT_COUNT] = {
     {"right_stick_click", XR_ACTION_TYPE_BOOLEAN_INPUT, "/user/hand/right/input/thumbstick/click"},
 };
 
+struct QuadSettings {
+    bool visible = false;
+    float width = 2.0f;     // meters
+    float distance = 2.0f;  // meters in front of the LOCAL space origin
+    float offsetY = 0.0f;   // meters
+    bool blendAlpha = false;
+};
+
+struct Quad {
+    int32_t width = 0;
+    int32_t height = 0;
+    XrSwapchain swapchain = XR_NULL_HANDLE;
+    std::vector<XrSwapchainImageOpenGLESKHR> images;
+
+    jobject sourceTexture = nullptr;  // android.graphics.SurfaceTexture
+    GLuint oesTexture = 0;
+    bool attached = false;
+    bool hasImage = false;  // a quad may only be submitted after its first image was released
+
+    QuadSettings settings;  // guarded by XrState::quadMutex
+};
+
+struct PassthroughFns {
+    XrResult (*create)(XrSession, const XrPassthroughCreateInfoFB*, XrPassthroughFB*) = nullptr;
+    XrResult (*destroy)(XrPassthroughFB) = nullptr;
+    XrResult (*start)(XrPassthroughFB) = nullptr;
+    XrResult (*pause)(XrPassthroughFB) = nullptr;
+    XrResult (*createLayer)(XrSession, const XrPassthroughLayerCreateInfoFB*, XrPassthroughLayerFB*) = nullptr;
+    XrResult (*destroyLayer)(XrPassthroughLayerFB) = nullptr;
+    XrResult (*pauseLayer)(XrPassthroughLayerFB) = nullptr;
+    XrResult (*resumeLayer)(XrPassthroughLayerFB) = nullptr;
+};
+
 struct XrState {
     jobject activity = nullptr;
     jobject listener = nullptr;
@@ -84,30 +124,32 @@ struct XrState {
     XrSystemId systemId = XR_NULL_SYSTEM_ID;
     XrSession session = XR_NULL_HANDLE;
     XrSpace space = XR_NULL_HANDLE;
-    XrSwapchain swapchain = XR_NULL_HANDLE;
-    jobject surface = nullptr;  // surface swapchain mode only
+    XrActionSet actionSet = XR_NULL_HANDLE;
+    XrAction actions[ACT_COUNT] = {};
 
-    // Texture swapchain mode
-    bool textureMode = false;
+    std::mutex quadMutex;
+    Quad quads[QUAD_COUNT];
+    int64_t swapchainFormat = 0;
     bool decodeSrgb = false;
-    std::vector<XrSwapchainImageOpenGLESKHR> images;
-    jobject sourceTexture = nullptr;  // android.graphics.SurfaceTexture
+
+    // SurfaceTexture methods and copy program, created on the frame thread
+    jmethodID attachToGLContext = nullptr;
+    jmethodID detachFromGLContext = nullptr;
     jmethodID updateTexImage = nullptr;
     jmethodID getTransformMatrix = nullptr;
     jobject transformArray = nullptr;  // float[16]
-    GLuint oesTexture = 0;
     GLuint program = 0;
     GLuint framebuffer = 0;
     GLint texMatrixLocation = -1;
     GLint decodeSrgbLocation = -1;
     bool glReady = false;
-    XrActionSet actionSet = XR_NULL_HANDLE;
-    XrAction actions[ACT_COUNT] = {};
 
-    int32_t width = 0;
-    int32_t height = 0;
-    float quadWidth = 2.0f;     // meters
-    float quadDistance = 2.0f;  // meters in front of the LOCAL space origin
+    bool passthroughSupported = false;
+    PassthroughFns passthroughFns;
+    XrPassthroughFB passthrough = XR_NULL_HANDLE;
+    XrPassthroughLayerFB passthroughLayer = XR_NULL_HANDLE;
+    std::atomic<bool> passthroughWanted{false};
+    bool passthroughActive = false;
 
     XrSessionState sessionState = XR_SESSION_STATE_UNKNOWN;
     bool sessionRunning = false;
@@ -137,6 +179,16 @@ bool check(XrResult result, const char* what) {
         return false;
     }
     return true;
+}
+
+bool clearException(JNIEnv* env, const char* what) {
+    if (env->ExceptionCheck()) {
+        LOGE("Java exception in %s", what);
+        env->ExceptionDescribe();
+        env->ExceptionClear();
+        return true;
+    }
+    return false;
 }
 
 bool initEgl(XrState& xr) {
@@ -215,7 +267,12 @@ bool createActions(XrState& xr) {
 }
 
 void destroyXr(JNIEnv* env, XrState* xr) {
-    if (xr->swapchain != XR_NULL_HANDLE) xrDestroySwapchain(xr->swapchain);
+    for (Quad& quad : xr->quads) {
+        if (quad.swapchain != XR_NULL_HANDLE) xrDestroySwapchain(quad.swapchain);
+        if (quad.sourceTexture != nullptr) env->DeleteGlobalRef(quad.sourceTexture);
+    }
+    if (xr->passthroughLayer != XR_NULL_HANDLE) xr->passthroughFns.destroyLayer(xr->passthroughLayer);
+    if (xr->passthrough != XR_NULL_HANDLE) xr->passthroughFns.destroy(xr->passthrough);
     if (xr->space != XR_NULL_HANDLE) xrDestroySpace(xr->space);
     if (xr->actionSet != XR_NULL_HANDLE) xrDestroyActionSet(xr->actionSet);
     if (xr->session != XR_NULL_HANDLE) xrDestroySession(xr->session);
@@ -228,8 +285,6 @@ void destroyXr(JNIEnv* env, XrState* xr) {
         // No eglTerminate: the display is shared with the emulator's render thread.
     }
 
-    if (xr->surface != nullptr) env->DeleteGlobalRef(xr->surface);
-    if (xr->sourceTexture != nullptr) env->DeleteGlobalRef(xr->sourceTexture);
     if (xr->transformArray != nullptr) env->DeleteGlobalRef(xr->transformArray);
     if (xr->listener != nullptr) env->DeleteGlobalRef(xr->listener);
     if (xr->activity != nullptr) env->DeleteGlobalRef(xr->activity);
@@ -256,6 +311,7 @@ void handleSessionStateChanged(JNIEnv* env, XrState& xr, XrSessionState state) {
     }
 
     env->CallVoidMethod(xr.listener, xr.onSessionState, static_cast<jint>(state));
+    clearException(env, "onXrSessionState");
 }
 
 void pollEvents(JNIEnv* env, XrState& xr) {
@@ -270,6 +326,7 @@ void pollEvents(JNIEnv* env, XrState& xr) {
             case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING:
                 LOGE("Instance loss pending");
                 env->CallVoidMethod(xr.listener, xr.onSessionState, static_cast<jint>(XR_SESSION_STATE_LOSS_PENDING));
+                clearException(env, "onXrSessionState");
                 break;
             default:
                 break;
@@ -331,21 +388,61 @@ void syncInput(JNIEnv* env, XrState& xr) {
                         getFloat(xr, ACT_LTRIGGER), getFloat(xr, ACT_RTRIGGER),
                         getFloat(xr, ACT_LGRIP), getFloat(xr, ACT_RGRIP),
                         buttons);
-    if (env->ExceptionCheck()) {
-        env->ExceptionDescribe();
-        env->ExceptionClear();
-    }
+    clearException(env, "onXrInput");
 }
 
-bool clearException(JNIEnv* env, const char* what) {
-    if (env->ExceptionCheck()) {
-        LOGE("Java exception in %s", what);
-        env->ExceptionDescribe();
-        env->ExceptionClear();
-        return true;
-    }
-    return false;
+// ---------------------------------------------------------------------------------------------
+// Passthrough (XR_FB_passthrough)
+
+bool loadPassthroughFns(XrState& xr) {
+    PassthroughFns& fns = xr.passthroughFns;
+    return getProc(xr.instance, "xrCreatePassthroughFB", fns.create) &&
+           getProc(xr.instance, "xrDestroyPassthroughFB", fns.destroy) &&
+           getProc(xr.instance, "xrPassthroughStartFB", fns.start) &&
+           getProc(xr.instance, "xrPassthroughPauseFB", fns.pause) &&
+           getProc(xr.instance, "xrCreatePassthroughLayerFB", fns.createLayer) &&
+           getProc(xr.instance, "xrDestroyPassthroughLayerFB", fns.destroyLayer) &&
+           getProc(xr.instance, "xrPassthroughLayerPauseFB", fns.pauseLayer) &&
+           getProc(xr.instance, "xrPassthroughLayerResumeFB", fns.resumeLayer);
 }
+
+bool createPassthrough(XrState& xr) {
+    XrPassthroughCreateInfoFB info{XR_TYPE_PASSTHROUGH_CREATE_INFO_FB};
+    if (!check(xr.passthroughFns.create(xr.session, &info, &xr.passthrough), "xrCreatePassthroughFB")) {
+        return false;
+    }
+    XrPassthroughLayerCreateInfoFB layerInfo{XR_TYPE_PASSTHROUGH_LAYER_CREATE_INFO_FB};
+    layerInfo.passthrough = xr.passthrough;
+    layerInfo.purpose = XR_PASSTHROUGH_LAYER_PURPOSE_RECONSTRUCTION_FB;
+    return check(xr.passthroughFns.createLayer(xr.session, &layerInfo, &xr.passthroughLayer),
+                 "xrCreatePassthroughLayerFB");
+}
+
+// Called on the frame thread
+void updatePassthrough(XrState& xr) {
+    if (!xr.passthroughSupported) {
+        return;
+    }
+    const bool wanted = xr.passthroughWanted;
+    if (wanted == xr.passthroughActive) {
+        return;
+    }
+    if (wanted) {
+        xr.passthroughActive = check(xr.passthroughFns.start(xr.passthrough), "xrPassthroughStartFB") &&
+                               check(xr.passthroughFns.resumeLayer(xr.passthroughLayer), "xrPassthroughLayerResumeFB");
+        if (!xr.passthroughActive) {
+            xr.passthroughWanted = false;
+        }
+    } else {
+        xr.passthroughFns.pauseLayer(xr.passthroughLayer);
+        xr.passthroughFns.pause(xr.passthrough);
+        xr.passthroughActive = false;
+    }
+    LOGI("Passthrough %s", xr.passthroughActive ? "on" : "off");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Copying SurfaceTextures into swapchains
 
 GLuint compileShader(GLenum type, const char* source) {
     GLuint shader = glCreateShader(type);
@@ -382,10 +479,10 @@ uniform float uDecodeSrgb;
 in vec2 vUv;
 out vec4 outColor;
 void main() {
-    vec3 color = texture(uTexture, vUv).rgb;
-    // sRGB swapchains re-encode on write, so undo the gamma the emulator already applied
-    if (uDecodeSrgb > 0.5) color = pow(color, vec3(2.2));
-    outColor = vec4(color, 1.0);
+    vec4 color = texture(uTexture, vUv);
+    // sRGB swapchains re-encode on write, so undo the gamma the source already applied
+    if (uDecodeSrgb > 0.5) color.rgb = pow(color.rgb, vec3(2.2));
+    outColor = color;
 })";
 
     GLuint vertex = compileShader(GL_VERTEX_SHADER, kVertex);
@@ -407,74 +504,88 @@ void main() {
     }
     xr.texMatrixLocation = glGetUniformLocation(xr.program, "uTexMatrix");
     xr.decodeSrgbLocation = glGetUniformLocation(xr.program, "uDecodeSrgb");
-
-    glGenTextures(1, &xr.oesTexture);
     glGenFramebuffers(1, &xr.framebuffer);
 
-    jclass textureClass = env->GetObjectClass(xr.sourceTexture);
-    jmethodID attach = env->GetMethodID(textureClass, "attachToGLContext", "(I)V");
+    jclass textureClass = env->FindClass("android/graphics/SurfaceTexture");
+    if (clearException(env, "FindClass SurfaceTexture")) {
+        return false;
+    }
+    xr.attachToGLContext = env->GetMethodID(textureClass, "attachToGLContext", "(I)V");
+    xr.detachFromGLContext = env->GetMethodID(textureClass, "detachFromGLContext", "()V");
     xr.updateTexImage = env->GetMethodID(textureClass, "updateTexImage", "()V");
     xr.getTransformMatrix = env->GetMethodID(textureClass, "getTransformMatrix", "([F)V");
-    if (attach == nullptr || xr.updateTexImage == nullptr || xr.getTransformMatrix == nullptr) {
-        clearException(env, "SurfaceTexture lookup");
+    env->DeleteLocalRef(textureClass);
+    if (clearException(env, "SurfaceTexture lookup")) {
         return false;
     }
-    env->CallVoidMethod(xr.sourceTexture, attach, static_cast<jint>(xr.oesTexture));
-    if (clearException(env, "attachToGLContext")) {
-        return false;
-    }
+
     jfloatArray array = env->NewFloatArray(16);
     xr.transformArray = env->NewGlobalRef(array);
     env->DeleteLocalRef(array);
 
-    LOGI("Texture copy path ready");
+    LOGI("Copy program ready");
     return true;
 }
 
 void destroyCopyGl(JNIEnv* env, XrState& xr) {
-    if (!xr.glReady) {
-        return;
+    for (Quad& quad : xr.quads) {
+        if (quad.attached) {
+            env->CallVoidMethod(quad.sourceTexture, xr.detachFromGLContext);
+            clearException(env, "detachFromGLContext");
+            quad.attached = false;
+        }
+        if (quad.oesTexture != 0) {
+            glDeleteTextures(1, &quad.oesTexture);
+            quad.oesTexture = 0;
+        }
     }
-    jclass textureClass = env->GetObjectClass(xr.sourceTexture);
-    jmethodID detach = env->GetMethodID(textureClass, "detachFromGLContext", "()V");
-    if (detach != nullptr) {
-        env->CallVoidMethod(xr.sourceTexture, detach);
+    if (xr.glReady) {
+        glDeleteFramebuffers(1, &xr.framebuffer);
+        glDeleteProgram(xr.program);
+        xr.glReady = false;
     }
-    clearException(env, "detachFromGLContext");
-    glDeleteFramebuffers(1, &xr.framebuffer);
-    glDeleteTextures(1, &xr.oesTexture);
-    glDeleteProgram(xr.program);
-    xr.glReady = false;
 }
 
-// Copies the latest emulator frame into the next swapchain image.
-void copySourceToSwapchain(JNIEnv* env, XrState& xr) {
-    env->CallVoidMethod(xr.sourceTexture, xr.updateTexImage);
+// Copies the latest source frame into the next swapchain image of the quad.
+void copyQuad(JNIEnv* env, XrState& xr, Quad& quad) {
+    if (quad.sourceTexture == nullptr || quad.swapchain == XR_NULL_HANDLE) {
+        return;
+    }
+    if (!quad.attached) {
+        glGenTextures(1, &quad.oesTexture);
+        env->CallVoidMethod(quad.sourceTexture, xr.attachToGLContext, static_cast<jint>(quad.oesTexture));
+        if (clearException(env, "attachToGLContext")) {
+            return;
+        }
+        quad.attached = true;
+    }
+
+    env->CallVoidMethod(quad.sourceTexture, xr.updateTexImage);
     if (clearException(env, "updateTexImage")) {
         return;
     }
-    env->CallVoidMethod(xr.sourceTexture, xr.getTransformMatrix, static_cast<jfloatArray>(xr.transformArray));
+    env->CallVoidMethod(quad.sourceTexture, xr.getTransformMatrix, static_cast<jfloatArray>(xr.transformArray));
     jfloat matrix[16];
     env->GetFloatArrayRegion(static_cast<jfloatArray>(xr.transformArray), 0, 16, matrix);
 
     uint32_t index = 0;
     XrSwapchainImageAcquireInfo acquireInfo{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
-    if (!check(xrAcquireSwapchainImage(xr.swapchain, &acquireInfo, &index), "xrAcquireSwapchainImage")) {
+    if (!check(xrAcquireSwapchainImage(quad.swapchain, &acquireInfo, &index), "xrAcquireSwapchainImage")) {
         return;
     }
     XrSwapchainImageWaitInfo waitInfo{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
     waitInfo.timeout = XR_INFINITE_DURATION;
-    check(xrWaitSwapchainImage(xr.swapchain, &waitInfo), "xrWaitSwapchainImage");
+    check(xrWaitSwapchainImage(quad.swapchain, &waitInfo), "xrWaitSwapchainImage");
 
     static const GLfloat kQuad[] = {-1.0f, -1.0f, 1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 1.0f};
     glBindFramebuffer(GL_FRAMEBUFFER, xr.framebuffer);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, xr.images[index].image, 0);
-    glViewport(0, 0, xr.width, xr.height);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, quad.images[index].image, 0);
+    glViewport(0, 0, quad.width, quad.height);
     glDisable(GL_BLEND);
     glDisable(GL_DEPTH_TEST);
     glUseProgram(xr.program);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(0x8D65 /* GL_TEXTURE_EXTERNAL_OES */, xr.oesTexture);
+    glBindTexture(0x8D65 /* GL_TEXTURE_EXTERNAL_OES */, quad.oesTexture);
     glUniformMatrix4fv(xr.texMatrixLocation, 1, GL_FALSE, matrix);
     glUniform1f(xr.decodeSrgbLocation, xr.decodeSrgb ? 1.0f : 0.0f);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, kQuad);
@@ -484,7 +595,9 @@ void copySourceToSwapchain(JNIEnv* env, XrState& xr) {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     XrSwapchainImageReleaseInfo releaseInfo{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
-    check(xrReleaseSwapchainImage(xr.swapchain, &releaseInfo), "xrReleaseSwapchainImage");
+    if (check(xrReleaseSwapchainImage(quad.swapchain, &releaseInfo), "xrReleaseSwapchainImage")) {
+        quad.hasImage = true;
+    }
 }
 
 void renderFrame(XrState& xr, JNIEnv* env) {
@@ -503,35 +616,62 @@ void renderFrame(XrState& xr, JNIEnv* env) {
     if (xr.sessionState == XR_SESSION_STATE_FOCUSED) {
         syncInput(env, xr);
     }
+    updatePassthrough(xr);
 
-    if (xr.textureMode && frameState.shouldRender) {
-        if (!xr.glReady && xr.sourceTexture != nullptr) {
-            xr.glReady = initCopyGl(env, xr);
-        }
-        if (xr.glReady) {
-            copySourceToSwapchain(env, xr);
+    QuadSettings settings[QUAD_COUNT];
+    {
+        std::lock_guard<std::mutex> lock(xr.quadMutex);
+        for (int i = 0; i < QUAD_COUNT; ++i) {
+            settings[i] = xr.quads[i].settings;
         }
     }
-    // A texture swapchain may not be shown before its first image was released
-    const bool hasImage = !xr.textureMode || xr.glReady;
 
-    XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
-    quad.space = xr.space;
-    quad.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-    quad.subImage.swapchain = xr.swapchain;
-    quad.subImage.imageRect = {{0, 0}, {xr.width, xr.height}};
-    quad.subImage.imageArrayIndex = 0;
-    quad.pose = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, -xr.quadDistance}};
-    quad.size = {xr.quadWidth, xr.quadWidth * static_cast<float>(xr.height) / static_cast<float>(xr.width)};
+    XrCompositionLayerPassthroughFB passthroughLayer{XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
+    XrCompositionLayerQuad quadLayers[QUAD_COUNT];
+    const XrCompositionLayerBaseHeader* layers[QUAD_COUNT + 1];
+    uint32_t layerCount = 0;
 
-    const XrCompositionLayerBaseHeader* layers[] = {
-        reinterpret_cast<XrCompositionLayerBaseHeader*>(&quad)
-    };
+    if (frameState.shouldRender) {
+        if (!xr.glReady) {
+            xr.glReady = initCopyGl(env, xr);
+        }
+
+        if (xr.passthroughActive) {
+            passthroughLayer.layerHandle = xr.passthroughLayer;
+            layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&passthroughLayer);
+        }
+
+        for (int i = 0; i < QUAD_COUNT; ++i) {
+            Quad& quad = xr.quads[i];
+            if (!settings[i].visible) {
+                continue;
+            }
+            if (xr.glReady) {
+                copyQuad(env, xr, quad);
+            }
+            if (!quad.hasImage) {
+                continue;
+            }
+
+            XrCompositionLayerQuad& layer = quadLayers[i];
+            layer = {XR_TYPE_COMPOSITION_LAYER_QUAD};
+            layer.layerFlags = settings[i].blendAlpha ? XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT : 0;
+            layer.space = xr.space;
+            layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+            layer.subImage.swapchain = quad.swapchain;
+            layer.subImage.imageRect = {{0, 0}, {quad.width, quad.height}};
+            layer.subImage.imageArrayIndex = 0;
+            layer.pose = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, settings[i].offsetY, -settings[i].distance}};
+            layer.size = {settings[i].width,
+                          settings[i].width * static_cast<float>(quad.height) / static_cast<float>(quad.width)};
+            layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer);
+        }
+    }
 
     XrFrameEndInfo endInfo{XR_TYPE_FRAME_END_INFO};
     endInfo.displayTime = frameState.predictedDisplayTime;
     endInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-    endInfo.layerCount = frameState.shouldRender && hasImage ? 1 : 0;
+    endInfo.layerCount = layerCount;
     endInfo.layers = layers;
     check(xrEndFrame(xr.session, &endInfo), "xrEndFrame");
 }
@@ -558,6 +698,9 @@ void frameLoop(XrState* xr) {
     gVm->DetachCurrentThread();
 }
 
+// ---------------------------------------------------------------------------------------------
+// Setup
+
 bool hasInstanceExtension(const char* name) {
     uint32_t count = 0;
     if (XR_FAILED(xrEnumerateInstanceExtensionProperties(nullptr, 0, &count, nullptr))) {
@@ -575,35 +718,7 @@ bool hasInstanceExtension(const char* name) {
     return false;
 }
 
-bool createSurfaceSwapchain(JNIEnv* env, XrState& xr, PFN_xrCreateSwapchainAndroidSurfaceKHR create) {
-    const int64_t formats[] = {0x8058 /* GL_RGBA8 */, 0 /* ignored per spec */};
-    for (int64_t format : formats) {
-        XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-        info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
-        info.format = format;
-        info.sampleCount = 1;
-        info.width = xr.width;
-        info.height = xr.height;
-        info.faceCount = 1;
-        info.arraySize = 1;
-        info.mipCount = 1;
-
-        jobject surface = nullptr;
-        XrResult result = create(xr.session, &info, &xr.swapchain, &surface);
-        LOGI("Surface swapchain format=0x%llx %dx%d -> %d", static_cast<long long>(format), xr.width, xr.height, result);
-        if (XR_SUCCEEDED(result) && surface != nullptr) {
-            xr.surface = env->NewGlobalRef(surface);
-            return true;
-        }
-        if (xr.swapchain != XR_NULL_HANDLE) {
-            xrDestroySwapchain(xr.swapchain);
-            xr.swapchain = XR_NULL_HANDLE;
-        }
-    }
-    return false;
-}
-
-bool createTextureSwapchain(XrState& xr) {
+bool chooseSwapchainFormat(XrState& xr) {
     uint32_t count = 0;
     if (!check(xrEnumerateSwapchainFormats(xr.session, 0, &count, nullptr), "xrEnumerateSwapchainFormats")) {
         return false;
@@ -612,53 +727,54 @@ bool createTextureSwapchain(XrState& xr) {
     if (!check(xrEnumerateSwapchainFormats(xr.session, count, &count, formats.data()), "xrEnumerateSwapchainFormats")) {
         return false;
     }
-
-    int64_t chosen = 0;
     for (int64_t format : formats) {
-        LOGI("Runtime swapchain format 0x%llx", static_cast<long long>(format));
         if (format == 0x8058 /* GL_RGBA8 */) {
-            chosen = format;
-        } else if (format == 0x8C43 /* GL_SRGB8_ALPHA8 */ && chosen == 0) {
-            chosen = format;
+            xr.swapchainFormat = format;
+        } else if (format == 0x8C43 /* GL_SRGB8_ALPHA8 */ && xr.swapchainFormat == 0) {
+            xr.swapchainFormat = format;
         }
     }
-    if (chosen == 0 && !formats.empty()) {
-        chosen = formats[0];
+    if (xr.swapchainFormat == 0 && !formats.empty()) {
+        xr.swapchainFormat = formats[0];
     }
-    xr.decodeSrgb = chosen == 0x8C43;
+    xr.decodeSrgb = xr.swapchainFormat == 0x8C43;
+    return xr.swapchainFormat != 0;
+}
+
+bool createQuadSwapchain(XrState& xr, Quad& quad, int32_t width, int32_t height) {
+    quad.width = width;
+    quad.height = height;
 
     XrSwapchainCreateInfo info{XR_TYPE_SWAPCHAIN_CREATE_INFO};
     info.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
-    info.format = chosen;
+    info.format = xr.swapchainFormat;
     info.sampleCount = 1;
-    info.width = xr.width;
-    info.height = xr.height;
+    info.width = width;
+    info.height = height;
     info.faceCount = 1;
     info.arraySize = 1;
     info.mipCount = 1;
-    if (!check(xrCreateSwapchain(xr.session, &info, &xr.swapchain), "xrCreateSwapchain")) {
+    if (!check(xrCreateSwapchain(xr.session, &info, &quad.swapchain), "xrCreateSwapchain")) {
         return false;
     }
 
     uint32_t imageCount = 0;
-    if (!check(xrEnumerateSwapchainImages(xr.swapchain, 0, &imageCount, nullptr), "xrEnumerateSwapchainImages")) {
+    if (!check(xrEnumerateSwapchainImages(quad.swapchain, 0, &imageCount, nullptr), "xrEnumerateSwapchainImages")) {
         return false;
     }
-    xr.images.assign(imageCount, {XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR});
-    if (!check(xrEnumerateSwapchainImages(xr.swapchain, imageCount, &imageCount,
-                                          reinterpret_cast<XrSwapchainImageBaseHeader*>(xr.images.data())),
+    quad.images.assign(imageCount, {XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR});
+    if (!check(xrEnumerateSwapchainImages(quad.swapchain, imageCount, &imageCount,
+                                          reinterpret_cast<XrSwapchainImageBaseHeader*>(quad.images.data())),
                "xrEnumerateSwapchainImages")) {
         return false;
     }
-
-    xr.textureMode = true;
-    LOGI("Texture swapchain format=0x%llx %dx%d, %u images", static_cast<long long>(chosen), xr.width, xr.height, imageCount);
+    LOGI("Swapchain format=0x%llx %dx%d, %u images", static_cast<long long>(xr.swapchainFormat), width, height, imageCount);
     return true;
 }
 
-// Creates instance, session, input actions and a swapchain. Expects the XR EGL context to be
-// current on the calling thread once initEgl() ran.
-bool createXrSession(JNIEnv* env, XrState& xr, jint width, jint height) {
+// Creates instance, session, input actions, passthrough and the quad swapchains.
+// Leaves the XR EGL context current on the calling thread once initEgl() ran.
+bool createXrSession(XrState& xr, jint gameWidth, jint gameHeight, jint menuWidth, jint menuHeight) {
     if (!gLoaderInitialized) {
         PFN_xrInitializeLoaderKHR initializeLoader = nullptr;
         if (!getProc(XR_NULL_HANDLE, "xrInitializeLoaderKHR", initializeLoader)) {
@@ -674,16 +790,16 @@ bool createXrSession(JNIEnv* env, XrState& xr, jint width, jint height) {
         gLoaderInitialized = true;
     }
 
-    const bool surfaceExtension = hasInstanceExtension(XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME);
-    LOGI("%s available: %d", XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME, surfaceExtension);
+    xr.passthroughSupported = hasInstanceExtension(XR_FB_PASSTHROUGH_EXTENSION_NAME);
+    LOGI("%s available: %d", XR_FB_PASSTHROUGH_EXTENSION_NAME, xr.passthroughSupported);
 
     XrInstanceCreateInfoAndroidKHR androidInfo{XR_TYPE_INSTANCE_CREATE_INFO_ANDROID_KHR};
     androidInfo.applicationVM = gVm;
     androidInfo.applicationActivity = xr.activity;
 
     std::vector<const char*> extensions = {XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME};
-    if (surfaceExtension) {
-        extensions.push_back(XR_KHR_ANDROID_SURFACE_SWAPCHAIN_EXTENSION_NAME);
+    if (xr.passthroughSupported) {
+        extensions.push_back(XR_FB_PASSTHROUGH_EXTENSION_NAME);
     }
 
     XrInstanceCreateInfo instanceInfo{XR_TYPE_INSTANCE_CREATE_INFO};
@@ -706,12 +822,11 @@ bool createXrSession(JNIEnv* env, XrState& xr, jint width, jint height) {
     }
 
     PFN_xrGetOpenGLESGraphicsRequirementsKHR getGraphicsRequirements = nullptr;
-    PFN_xrCreateSwapchainAndroidSurfaceKHR createSurface = nullptr;
     if (!getProc(xr.instance, "xrGetOpenGLESGraphicsRequirementsKHR", getGraphicsRequirements)) {
         return false;
     }
-    if (surfaceExtension) {
-        getProc(xr.instance, "xrCreateSwapchainAndroidSurfaceKHR", createSurface);
+    if (xr.passthroughSupported && !loadPassthroughFns(xr)) {
+        xr.passthroughSupported = false;
     }
 
     // Required before xrCreateSession
@@ -721,6 +836,7 @@ bool createXrSession(JNIEnv* env, XrState& xr, jint width, jint height) {
         return false;
     }
 
+    // Meta's runtime needs the context current for session and swapchain calls
     if (!initEgl(xr)) {
         return false;
     }
@@ -749,14 +865,13 @@ bool createXrSession(JNIEnv* env, XrState& xr, jint width, jint height) {
         return false;
     }
 
-    xr.width = width;
-    xr.height = height;
-
-    if (createSurface != nullptr && createSurfaceSwapchain(env, xr, createSurface)) {
-        LOGI("Using surface swapchain %dx%d", width, height);
-        return true;
+    if (xr.passthroughSupported && !createPassthrough(xr)) {
+        xr.passthroughSupported = false;
     }
-    return createTextureSwapchain(xr);
+
+    return chooseSwapchainFormat(xr) &&
+           createQuadSwapchain(xr, xr.quads[QUAD_GAME], gameWidth, gameHeight) &&
+           createQuadSwapchain(xr, xr.quads[QUAD_MENU], menuWidth, menuHeight);
 }
 
 }  // namespace
@@ -768,15 +883,14 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*) {
     return JNI_VERSION_1_6;
 }
 
-// Returns 0 on failure, 1 for a surface swapchain (see nativeGetSurface), 2 for a texture
-// swapchain that needs a source SurfaceTexture (see nativeSetSourceTexture). Must match QuestXr.java.
-JNIEXPORT jint JNICALL
+JNIEXPORT jboolean JNICALL
 Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, jclass,
                                                                   jobject activity, jobject listener,
-                                                                  jint width, jint height) {
+                                                                  jint gameWidth, jint gameHeight,
+                                                                  jint menuWidth, jint menuHeight) {
     if (gXr != nullptr) {
         LOGE("XR already created");
-        return 0;
+        return JNI_FALSE;
     }
 
     auto* xr = new XrState();
@@ -789,36 +903,56 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, j
         env->ExceptionClear();
         LOGE("Listener is missing callback methods");
         destroyXr(env, xr);
-        return 0;
+        return JNI_FALSE;
     }
 
-    const bool created = createXrSession(env, *xr, width, height);
+    const bool created = createXrSession(*xr, gameWidth, gameHeight, menuWidth, menuHeight);
     // The frame thread makes the context current again
     if (xr->eglDisplay != EGL_NO_DISPLAY) {
         eglMakeCurrent(xr->eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     }
     if (!created) {
         destroyXr(env, xr);
-        return 0;
+        return JNI_FALSE;
     }
 
     gXr = xr;
-    return xr->textureMode ? 2 : 1;
+    return JNI_TRUE;
 }
 
-JNIEXPORT jobject JNICALL
-Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeGetSurface(JNIEnv* env, jclass) {
-    if (gXr == nullptr || gXr->surface == nullptr) {
-        return nullptr;
+// Must be called before nativeStart
+JNIEXPORT void JNICALL
+Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetSourceTexture(JNIEnv* env, jclass, jint quad,
+                                                                            jobject texture) {
+    if (gXr != nullptr && quad >= 0 && quad < QUAD_COUNT && gXr->quads[quad].sourceTexture == nullptr) {
+        gXr->quads[quad].sourceTexture = env->NewGlobalRef(texture);
     }
-    return env->NewLocalRef(gXr->surface);
 }
 
 JNIEXPORT void JNICALL
-Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetSourceTexture(JNIEnv* env, jclass, jobject texture) {
-    if (gXr != nullptr && gXr->sourceTexture == nullptr) {
-        gXr->sourceTexture = env->NewGlobalRef(texture);
+Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetQuad(JNIEnv*, jclass, jint quad, jboolean visible,
+                                                                   jfloat width, jfloat distance, jfloat offsetY,
+                                                                   jboolean blendAlpha) {
+    if (gXr == nullptr || quad < 0 || quad >= QUAD_COUNT) {
+        return;
     }
+    std::lock_guard<std::mutex> lock(gXr->quadMutex);
+    QuadSettings& settings = gXr->quads[quad].settings;
+    settings.visible = visible;
+    settings.width = width;
+    settings.distance = distance;
+    settings.offsetY = offsetY;
+    settings.blendAlpha = blendAlpha;
+}
+
+// Returns false if passthrough is not supported
+JNIEXPORT jboolean JNICALL
+Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetPassthrough(JNIEnv*, jclass, jboolean enabled) {
+    if (gXr == nullptr || !gXr->passthroughSupported) {
+        return JNI_FALSE;
+    }
+    gXr->passthroughWanted = enabled;
+    return JNI_TRUE;
 }
 
 JNIEXPORT void JNICALL
@@ -841,14 +975,6 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeDestroy(JNIEnv* env, 
     }
     destroyXr(env, gXr);
     gXr = nullptr;
-}
-
-JNIEXPORT void JNICALL
-Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetQuad(JNIEnv*, jclass, jfloat width, jfloat distance) {
-    if (gXr != nullptr) {
-        gXr->quadWidth = width;
-        gXr->quadDistance = distance;
-    }
 }
 
 }  // extern "C"

@@ -9,9 +9,9 @@ import android.view.Surface;
 /**
  * Thin wrapper around the native OpenXR session (quest-xr module).
  * <p>
- * The session shows a quad layer; the game surface draws into {@link #create}'s returned Surface
- * instead of its SurfaceView. That Surface either belongs to an Android surface swapchain, or to a
- * SurfaceTexture that the native frame thread copies into a regular swapchain.
+ * The session shows quad layers for the game and the VR menu, optionally over passthrough.
+ * Each quad gets a Surface backed by a SurfaceTexture; the native frame thread copies whatever
+ * is drawn into it into an OpenXR swapchain.
  */
 public class QuestXr
 {
@@ -36,6 +36,11 @@ public class QuestXr
     public static final int STATE_LOSS_PENDING = 7;
     public static final int STATE_EXITING = 8;
 
+    // Quad ids, must match quest_xr.cpp
+    public static final int QUAD_GAME = 0;
+    public static final int QUAD_MENU = 1;
+    private static final int QUAD_COUNT = 2;
+
     /** Callbacks are invoked on the XR frame thread. */
     public interface Listener
     {
@@ -45,14 +50,9 @@ public class QuestXr
         void onXrSessionState(int state);
     }
 
-    // nativeCreate results, must match quest_xr.cpp
-    private static final int MODE_FAILED = 0;
-    private static final int MODE_SURFACE_SWAPCHAIN = 1;
-    private static final int MODE_TEXTURE_SWAPCHAIN = 2;
-
     private static boolean sLibraryLoaded = false;
-    private static SurfaceTexture sSourceTexture = null;
-    private static Surface sSourceSurface = null;
+    private static final SurfaceTexture[] sTextures = new SurfaceTexture[QUAD_COUNT];
+    private static final Surface[] sSurfaces = new Surface[QUAD_COUNT];
 
     public static boolean isQuestDevice()
     {
@@ -73,30 +73,34 @@ public class QuestXr
     }
 
     /**
-     * Create the XR session and a surface swapchain of the given size.
-     * @return The surface to render the game into, or null if XR is unavailable
+     * Create the XR session with a game and a menu quad of the given pixel sizes.
+     * @return False if XR is unavailable
      */
-    public static Surface create(Activity activity, Listener listener, int width, int height)
+    public static boolean create(Activity activity, Listener listener, int gameWidth, int gameHeight,
+                                 int menuWidth, int menuHeight)
     {
         if (!isQuestDevice() || !loadLibrary()) {
-            return null;
+            return false;
         }
-        final int mode = nativeCreate(activity, listener, width, height);
-        Log.i(TAG, "XR mode " + mode);
+        if (!nativeCreate(activity, listener, gameWidth, gameHeight, menuWidth, menuHeight)) {
+            return false;
+        }
 
-        switch (mode) {
-            case MODE_SURFACE_SWAPCHAIN:
-                return nativeGetSurface();
-            case MODE_TEXTURE_SWAPCHAIN:
-                // Created detached; the native frame thread attaches it to its own GL context
-                sSourceTexture = new SurfaceTexture(false);
-                sSourceTexture.setDefaultBufferSize(width, height);
-                nativeSetSourceTexture(sSourceTexture);
-                sSourceSurface = new Surface(sSourceTexture);
-                return sSourceSurface;
-            default:
-                return null;
+        final int[][] sizes = {{gameWidth, gameHeight}, {menuWidth, menuHeight}};
+        for (int quad = 0; quad < QUAD_COUNT; ++quad) {
+            // Created detached; the native frame thread attaches it to its own GL context
+            sTextures[quad] = new SurfaceTexture(false);
+            sTextures[quad].setDefaultBufferSize(sizes[quad][0], sizes[quad][1]);
+            nativeSetSourceTexture(quad, sTextures[quad]);
+            sSurfaces[quad] = new Surface(sTextures[quad]);
         }
+        return true;
+    }
+
+    /** The surface to draw the given quad's content into. */
+    public static Surface getSurface(int quad)
+    {
+        return sSurfaces[quad];
     }
 
     /** Start the frame loop thread. */
@@ -111,28 +115,44 @@ public class QuestXr
         if (sLibraryLoaded) {
             nativeDestroy();
         }
-        if (sSourceSurface != null) {
-            sSourceSurface.release();
-            sSourceSurface = null;
-        }
-        if (sSourceTexture != null) {
-            sSourceTexture.release();
-            sSourceTexture = null;
+        for (int quad = 0; quad < QUAD_COUNT; ++quad) {
+            if (sSurfaces[quad] != null) {
+                sSurfaces[quad].release();
+                sSurfaces[quad] = null;
+            }
+            if (sTextures[quad] != null) {
+                sTextures[quad].release();
+                sTextures[quad] = null;
+            }
         }
     }
 
-    /** Set the virtual screen width and distance, in meters. */
-    public static void setQuad(float width, float distance)
+    /**
+     * Place a quad straight ahead of the initial head position.
+     * @param width Width in meters, the height follows the pixel aspect ratio
+     * @param distance Distance in meters
+     * @param offsetY Vertical offset in meters
+     * @param blendAlpha Whether the quad's alpha channel is used for blending
+     */
+    public static void setQuad(int quad, boolean visible, float width, float distance, float offsetY, boolean blendAlpha)
     {
         if (sLibraryLoaded) {
-            nativeSetQuad(width, distance);
+            nativeSetQuad(quad, visible, width, distance, offsetY, blendAlpha);
         }
     }
 
-    private static native int nativeCreate(Activity activity, Listener listener, int width, int height);
-    private static native Surface nativeGetSurface();
-    private static native void nativeSetSourceTexture(SurfaceTexture texture);
+    /** @return False if passthrough is not supported */
+    public static boolean setPassthrough(boolean enabled)
+    {
+        return sLibraryLoaded && nativeSetPassthrough(enabled);
+    }
+
+    private static native boolean nativeCreate(Activity activity, Listener listener, int gameWidth, int gameHeight,
+                                               int menuWidth, int menuHeight);
+    private static native void nativeSetSourceTexture(int quad, SurfaceTexture texture);
+    private static native void nativeSetQuad(int quad, boolean visible, float width, float distance, float offsetY,
+                                             boolean blendAlpha);
+    private static native boolean nativeSetPassthrough(boolean enabled);
     private static native void nativeStart();
     private static native void nativeDestroy();
-    private static native void nativeSetQuad(float width, float distance);
 }

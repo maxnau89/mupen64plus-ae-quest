@@ -1,0 +1,29 @@
+{
+  "buildFiles": [
+    "/Volumes/MaxSSD2TB/Users/maxnau/Projekte/mupen64plus-ae/quest-xr/src/main/cpp/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Volumes/MaxSSD2TB/Users/maxnau/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Volumes/MaxSSD2TB/Users/maxnau/Projekte/mupen64plus-ae/quest-xr/.cxx/Release/6y103960/arm64-v8a",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Volumes/MaxSSD2TB/Users/maxnau/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Volumes/MaxSSD2TB/Users/maxnau/Projekte/mupen64plus-ae/quest-xr/.cxx/Release/6y103960/arm64-v8a",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "questxr::@6890427a1f51a3e7e1df": {
+      "artifactName": "questxr",
+      "abi": "arm64-v8a",
+      "output": "/Volumes/MaxSSD2TB/Users/maxnau/Projekte/mupen64plus-ae/quest-xr/build/intermediates/cxx/Release/6y103960/obj/arm64-v8a/libquestxr.so",
+      "runtimeFiles": [
+        "/Volumes/MaxSSD2TB/Users/maxnau/.gradle/caches/9.5.0/transforms/662639155046c63354e12bf5a87f7f8d/transformed/jetified-openxr_loader_for_android-1.1.63/prefab/modules/openxr_loader/libs/android.arm64-v8a/libopenxr_loader.so"
+      ]
+    }
+  }
+}

@@ -58,7 +58,6 @@ import android.graphics.Color;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.PointerIcon;
-import android.view.Surface;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager.LayoutParams;
@@ -91,6 +90,7 @@ import paulscode.android.mupen64plusae.dialog.ConfirmationDialog.PromptConfirmLi
 import paulscode.android.mupen64plusae.dialog.Prompt;
 import paulscode.android.mupen64plusae.input.PeripheralController;
 import paulscode.android.mupen64plusae.input.SensorController;
+import paulscode.android.mupen64plusae.game.xr.QuestVrMenu;
 import paulscode.android.mupen64plusae.game.xr.QuestXr;
 import paulscode.android.mupen64plusae.input.QuestTouchController;
 import paulscode.android.mupen64plusae.input.TouchController;
@@ -160,7 +160,7 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         GameSidebarActionHandler, CoreEventListener, View.OnTouchListener,
         NetplayClientSetupDialog.OnServerDialogActionListener,
         NetplayServerSetupDialog.OnClientDialogActionListener, NetplayFragment.NetplayListener,
-        RetroAchievementsManager.GameLoadListener, QuestTouchController.SessionListener
+        RetroAchievementsManager.GameLoadListener, QuestTouchController.SessionListener, QuestVrMenu.Host
 {
     private static final String TAG = "GameActivity";
 
@@ -191,9 +191,21 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     private GameSurface mGameSurface;
 
     // Meta Quest: game is shown on an OpenXR quad layer and played with Touch controllers
+    private static final String XR_PREFS = "quest_xr";
+    private static final String XR_PREF_SCREEN_SIZE = "screen_size";
+    private static final String XR_PREF_SCREEN_DISTANCE = "screen_distance";
+    private static final String XR_PREF_PASSTHROUGH = "passthrough";
+    private static final int XR_MENU_WIDTH = 1024;
+    private static final int XR_MENU_HEIGHT = 1200;
+    private static final float XR_MENU_SIZE = 1.1f;
     private boolean mXrMode = false;
     private boolean mXrExitRequested = false;
+    private boolean mXrPassthroughSupported = false;
+    private boolean mXrPassthrough = false;
+    private float mXrScreenSize = 2.0f;
+    private float mXrScreenDistance = 2.0f;
     private QuestTouchController mQuestTouchController;
+    private QuestVrMenu mQuestVrMenu;
 
     // Input resources
     private VisibleTouchMap mTouchscreenMap;
@@ -509,12 +521,21 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
 
         if (QuestXr.isQuestDevice()) {
             mQuestTouchController = new QuestTouchController(mCoreFragment, this);
-            final Surface xrSurface = QuestXr.create(this, mQuestTouchController,
+            if (QuestXr.create(this, mQuestTouchController,
                     mDisplayResolutionData.getResolutionWidth(mGamePrefs.verticalRenderResolution)*mGlobalPrefs.shaderScaleFactor,
-                    mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution)*mGlobalPrefs.shaderScaleFactor);
-            if (xrSurface != null) {
+                    mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution)*mGlobalPrefs.shaderScaleFactor,
+                    XR_MENU_WIDTH, XR_MENU_HEIGHT)) {
                 mXrMode = true;
-                mGameSurface.setExternalSurface(xrSurface);
+                mGameSurface.setExternalSurface(QuestXr.getSurface(QuestXr.QUAD_GAME));
+                mQuestVrMenu = new QuestVrMenu(QuestXr.getSurface(QuestXr.QUAD_MENU), XR_MENU_WIDTH, XR_MENU_HEIGHT,
+                        mCoreFragment, this, mRomDisplayName);
+
+                final SharedPreferences xrPrefs = getSharedPreferences(XR_PREFS, MODE_PRIVATE);
+                mXrScreenSize = xrPrefs.getFloat(XR_PREF_SCREEN_SIZE, mXrScreenSize);
+                mXrScreenDistance = xrPrefs.getFloat(XR_PREF_SCREEN_DISTANCE, mXrScreenDistance);
+                mXrPassthroughSupported = QuestXr.setPassthrough(xrPrefs.getBoolean(XR_PREF_PASSTHROUGH, false));
+                mXrPassthrough = mXrPassthroughSupported && xrPrefs.getBoolean(XR_PREF_PASSTHROUGH, false);
+                updateXrQuads();
                 QuestXr.start();
             } else {
                 Log.w(TAG, "OpenXR unavailable, falling back to 2D");
@@ -807,7 +828,9 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         }
 
         if (focused) {
-            mCoreFragment.resumeEmulator();
+            if (mQuestVrMenu == null || !mQuestVrMenu.isOpen()) {
+                mCoreFragment.resumeEmulator();
+            }
         } else {
             mCoreFragment.pauseEmulator();
         }
@@ -821,6 +844,142 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
             mXrExitRequested = true;
             shutdownEmulator();
         }
+    }
+
+    private void updateXrQuads()
+    {
+        final boolean menuOpen = mQuestVrMenu != null && mQuestVrMenu.isOpen();
+        QuestXr.setQuad(QuestXr.QUAD_GAME, true, mXrScreenSize, mXrScreenDistance, 0.0f, false);
+        // Slightly in front of the game screen
+        QuestXr.setQuad(QuestXr.QUAD_MENU, menuOpen, XR_MENU_SIZE, Math.max(0.6f, mXrScreenDistance - 0.4f), 0.0f, true);
+    }
+
+    @Override
+    public void onXrMenuToggleRequested()
+    {
+        if (mQuestVrMenu == null || mCoreFragment == null) {
+            return;
+        }
+        if (mQuestVrMenu.isOpen()) {
+            mQuestVrMenu.close();
+        } else {
+            Log.i(TAG, "Opening VR menu");
+            mCoreFragment.pauseEmulator();
+            mQuestTouchController.setMenuOpen(true);
+            mQuestVrMenu.open();
+            updateXrQuads();
+        }
+    }
+
+    @Override
+    public void onXrPassthroughToggleRequested()
+    {
+        if (mXrPassthroughSupported) {
+            setPassthroughEnabled(!mXrPassthrough);
+        }
+    }
+
+    @Override
+    public void onXrMenuNavigate(int direction)
+    {
+        if (mQuestVrMenu != null && mQuestVrMenu.isOpen()) {
+            mQuestVrMenu.moveSelection(direction);
+        }
+    }
+
+    @Override
+    public void onXrMenuAdjust(int direction)
+    {
+        if (mQuestVrMenu != null && mQuestVrMenu.isOpen()) {
+            mQuestVrMenu.adjust(direction);
+        }
+    }
+
+    @Override
+    public void onXrMenuActivate()
+    {
+        if (mQuestVrMenu != null && mQuestVrMenu.isOpen()) {
+            mQuestVrMenu.activate();
+        }
+    }
+
+    @Override
+    public void onXrMenuBack()
+    {
+        if (mQuestVrMenu != null && mQuestVrMenu.isOpen()) {
+            mQuestVrMenu.back();
+        }
+    }
+
+    @Override
+    public void onVrMenuClosed()
+    {
+        Log.i(TAG, "VR menu closed");
+        mQuestTouchController.setMenuOpen(false);
+        updateXrQuads();
+        if (mCoreFragment != null) {
+            mCoreFragment.resumeEmulator();
+        }
+    }
+
+    @Override
+    public void onVrMenuExitGame()
+    {
+        mQuestTouchController.setMenuOpen(false);
+        updateXrQuads();
+        onXrExitRequested();
+    }
+
+    @Override
+    public void onVrMenuScreenshot()
+    {
+        mGameSurface.takeScreenshot(mGlobalPrefs.screenshotsDir, mRomGoodName);
+    }
+
+    @Override
+    public boolean isPassthroughSupported()
+    {
+        return mXrPassthroughSupported;
+    }
+
+    @Override
+    public boolean isPassthroughEnabled()
+    {
+        return mXrPassthrough;
+    }
+
+    @Override
+    public void setPassthroughEnabled(boolean enabled)
+    {
+        mXrPassthrough = enabled && QuestXr.setPassthrough(enabled);
+        if (!enabled) {
+            QuestXr.setPassthrough(false);
+        }
+        getSharedPreferences(XR_PREFS, MODE_PRIVATE).edit().putBoolean(XR_PREF_PASSTHROUGH, mXrPassthrough).apply();
+    }
+
+    @Override
+    public float getScreenSize()
+    {
+        return mXrScreenSize;
+    }
+
+    @Override
+    public float getScreenDistance()
+    {
+        return mXrScreenDistance;
+    }
+
+    @Override
+    public void setScreenGeometry(float size, float distance)
+    {
+        mXrScreenSize = size;
+        mXrScreenDistance = distance;
+        updateXrQuads();
+        getSharedPreferences(XR_PREFS, MODE_PRIVATE).edit()
+                .putFloat(XR_PREF_SCREEN_SIZE, size)
+                .putFloat(XR_PREF_SCREEN_DISTANCE, distance)
+                .apply();
     }
 
     @Override

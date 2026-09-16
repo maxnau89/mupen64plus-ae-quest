@@ -1,0 +1,3 @@
+/Volumes/MaxSSD2TB/Users/maxnau/Projekte/mupen64plus-ae/quest-xr/.cxx/Release/6y103960/arm64-v8a/CMakeFiles/questxr.dir
+/Volumes/MaxSSD2TB/Users/maxnau/Projekte/mupen64plus-ae/quest-xr/.cxx/Release/6y103960/arm64-v8a/CMakeFiles/edit_cache.dir
+/Volumes/MaxSSD2TB/Users/maxnau/Projekte/mupen64plus-ae/quest-xr/.cxx/Release/6y103960/arm64-v8a/CMakeFiles/rebuild_cache.dir
