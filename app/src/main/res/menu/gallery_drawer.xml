@@ -25,7 +25,6 @@
                 android:title="@string/categoryAudio_title"/>
             <item
                 android:id="@+id/menuItem_categoryTouchscreen"
-                android:visible="false"
                 android:title="@string/categoryTouchscreen_title"/>
             <item
                 android:id="@+id/menuItem_categoryInput"
@@ -54,7 +53,6 @@
                 android:title="@string/menuItem_emulationProfiles"/>
             <item
                 android:id="@+id/menuItem_touchscreenProfiles"
-                android:visible="false"
                 android:title="@string/menuItem_touchscreenProfiles"/>
             <item
                 android:id="@+id/menuItem_controllerProfiles"

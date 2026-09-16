@@ -93,6 +93,7 @@ import paulscode.android.mupen64plusae.util.DisplayWrapper;
 import paulscode.android.mupen64plusae.util.FileUtil;
 import paulscode.android.mupen64plusae.util.LocaleContextWrapper;
 import paulscode.android.mupen64plusae.util.Notifier;
+import paulscode.android.mupen64plusae.game.xr.QuestXr;
 
 public class GalleryActivity extends AppCompatActivity implements GameSidebarActionHandler, PromptConfirmListener,
         GalleryRefreshFinishedListener
@@ -475,8 +476,8 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         mDrawerList.setImage(R.drawable.ouya_icon);
         mDrawerList.hideTitle();
 
-        //Remove touch screen profile configuration if in TV mode
-        if(mGlobalPrefs.isBigScreenMode)
+        //Remove touch screen profile configuration if in TV mode or on Meta Quest
+        if(mGlobalPrefs.isBigScreenMode || QuestXr.isQuestDevice())
         {
             final MenuItem profileGroupItem = mDrawerList.getMenu().findItem(R.id.menuItem_profiles);
             profileGroupItem.getSubMenu().removeItem(R.id.menuItem_touchscreenProfiles);
