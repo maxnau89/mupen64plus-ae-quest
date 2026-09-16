@@ -6,6 +6,7 @@
 
     <uses-feature android:glEsVersion="0x00020000" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+    <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="false" />
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature
@@ -366,7 +367,15 @@
             android:label="@string/GameActivity_title"
             android:windowActionBar="false"
             android:theme="@style/Theme.Mupen64plusaeTheme.Game"
-            android:process=":EmulationProcess"/>
+            android:process=":EmulationProcess">
+            <!-- Meta Quest: launch as immersive OpenXR activity, the rest of the app stays a 2D panel -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="com.oculus.intent.category.VR" />
+                <category android:name="org.khronos.openxr.intent.category.IMMERSIVE_HMD" />
+            </intent-filter>
+            <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
+        </activity>
         <activity
             android:name="paulscode.android.mupen64plusae.ImportExportActivity"
             android:exported="false"

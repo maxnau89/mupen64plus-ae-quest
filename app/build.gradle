@@ -144,6 +144,7 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     implementation project(':ae-bridge')
     implementation project(':miniupnp-bridge')
+    implementation project(':quest-xr')
     implementation project(':mupen64plus-audio-android')
     implementation project(':mupen64plus-video-gliden64')
     implementation project(':mupen64plus-video-glide64mk2')

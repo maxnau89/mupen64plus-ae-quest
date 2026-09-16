@@ -1,0 +1,36 @@
+apply plugin: 'com.android.library'
+apply from: '../build_common/version_common.gradle'
+
+android {
+    namespace = "org.mupen64plusae.questxr"
+
+    externalNativeBuild {
+        cmake {
+            version = "3.22.1"
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_static", "-DCMAKE_BUILD_TYPE=Release"
+                abiFilters "arm64-v8a"
+            }
+        }
+    }
+
+    buildFeatures {
+        prefab = true
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+dependencies {
+    implementation 'org.khronos.openxr:openxr_loader_for_android:1.1.63'
+}

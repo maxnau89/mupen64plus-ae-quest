@@ -58,6 +58,7 @@ import android.graphics.Color;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.PointerIcon;
+import android.view.Surface;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager.LayoutParams;
@@ -90,6 +91,8 @@ import paulscode.android.mupen64plusae.dialog.ConfirmationDialog.PromptConfirmLi
 import paulscode.android.mupen64plusae.dialog.Prompt;
 import paulscode.android.mupen64plusae.input.PeripheralController;
 import paulscode.android.mupen64plusae.input.SensorController;
+import paulscode.android.mupen64plusae.game.xr.QuestXr;
+import paulscode.android.mupen64plusae.input.QuestTouchController;
 import paulscode.android.mupen64plusae.input.TouchController;
 import paulscode.android.mupen64plusae.input.map.VisibleTouchMap;
 import paulscode.android.mupen64plusae.input.provider.AbstractProvider;
@@ -157,7 +160,7 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         GameSidebarActionHandler, CoreEventListener, View.OnTouchListener,
         NetplayClientSetupDialog.OnServerDialogActionListener,
         NetplayServerSetupDialog.OnClientDialogActionListener, NetplayFragment.NetplayListener,
-        RetroAchievementsManager.GameLoadListener
+        RetroAchievementsManager.GameLoadListener, QuestTouchController.SessionListener
 {
     private static final String TAG = "GameActivity";
 
@@ -186,6 +189,11 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     private DrawerLayout mDrawerLayout;
     private GameSidebar mGameSidebar;
     private GameSurface mGameSurface;
+
+    // Meta Quest: game is shown on an OpenXR quad layer and played with Touch controllers
+    private boolean mXrMode = false;
+    private boolean mXrExitRequested = false;
+    private QuestTouchController mQuestTouchController;
 
     // Input resources
     private VisibleTouchMap mTouchscreenMap;
@@ -499,9 +507,24 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         mGameSurface.setSelectedShader(mGlobalPrefs.getShaderPasses());
         mGameSurface.setShaderScaleFactor(mGlobalPrefs.shaderScaleFactor);
 
+        if (QuestXr.isQuestDevice()) {
+            mQuestTouchController = new QuestTouchController(mCoreFragment, this);
+            final Surface xrSurface = QuestXr.create(this, mQuestTouchController,
+                    mDisplayResolutionData.getResolutionWidth(mGamePrefs.verticalRenderResolution)*mGlobalPrefs.shaderScaleFactor,
+                    mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution)*mGlobalPrefs.shaderScaleFactor);
+            if (xrSurface != null) {
+                mXrMode = true;
+                mGameSurface.setExternalSurface(xrSurface);
+                QuestXr.start();
+            } else {
+                Log.w(TAG, "OpenXR unavailable, falling back to 2D");
+                mQuestTouchController = null;
+            }
+        }
+
         ReloadAllMenus();
 
-        if (savedInstanceState == null)
+        if (savedInstanceState == null && !mXrMode)
         {
             // Show the drawer at the start and have it hide itself
             // automatically
@@ -764,6 +787,36 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
 
         if (mOverlay != null) {
             mOverlay.onDestroy();
+        }
+
+        if (mXrMode) {
+            QuestXr.destroy();
+            mXrMode = false;
+        }
+    }
+
+    @Override
+    public void onXrFocusChanged(boolean focused)
+    {
+        Log.i(TAG, "onXrFocusChanged: " + focused);
+        if (mCoreFragment == null) {
+            return;
+        }
+
+        if (focused) {
+            mCoreFragment.resumeEmulator();
+        } else {
+            mCoreFragment.pauseEmulator();
+        }
+    }
+
+    @Override
+    public void onXrExitRequested()
+    {
+        Log.i(TAG, "onXrExitRequested");
+        if (!mXrExitRequested) {
+            mXrExitRequested = true;
+            shutdownEmulator();
         }
     }
 

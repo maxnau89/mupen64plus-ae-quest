@@ -44,6 +44,7 @@ import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Choreographer;
+import android.view.Surface;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 
@@ -129,6 +130,8 @@ public class GameSurface extends SurfaceView implements SurfaceHolder.Callback
     private RenderThread mRenderThread = null;
     private PixelBuffer.SurfaceTextureWithSize mSurfaceTexture = null;
     boolean mSurfaceAvailable = false;
+    /** Surface to render into instead of this view's own surface, e.g. an OpenXR swapchain */
+    private Surface mExternalSurface = null;
     boolean mGlContextStarted = false;
     Context mContext;
     int mShaderScaleFactor = 1;
@@ -169,6 +172,16 @@ public class GameSurface extends SurfaceView implements SurfaceHolder.Callback
         }
     }
 
+    /**
+     * Render into the given surface instead of this view's surface. Must be called before the
+     * GL context is started. The view's own surface callbacks are ignored from then on.
+     */
+    public void setExternalSurface(Surface surface)
+    {
+        mExternalSurface = surface;
+        mSurfaceAvailable = true;
+    }
+
     public void setSurfaceTextureDestroyed() {
         if (mRenderThread != null && mRenderThread.getHandler() != null) {
             mRenderThread.getHandler().sendSurfaceTextureDestroyed();
@@ -189,6 +202,9 @@ public class GameSurface extends SurfaceView implements SurfaceHolder.Callback
     @Override
     public void surfaceCreated(@NonNull SurfaceHolder holder) {
         Log.i(TAG, "surfaceCreated");
+        if (mExternalSurface != null) {
+            return;
+        }
         mSurfaceAvailable = true;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             holder.getSurface().setFrameRate(59.94f, FRAME_RATE_COMPATIBILITY_DEFAULT);
@@ -204,6 +220,9 @@ public class GameSurface extends SurfaceView implements SurfaceHolder.Callback
     @Override
     public void surfaceDestroyed(@NonNull SurfaceHolder holder) {
         Log.i(TAG, "surfaceDestroyed");
+        if (mExternalSurface != null) {
+            return;
+        }
 
         stopGlContext();
         mSurfaceAvailable = false;
@@ -551,7 +570,8 @@ public class GameSurface extends SurfaceView implements SurfaceHolder.Callback
         if( forceCreate || mEglSurface == null || mEglSurface == EGL14.EGL_NO_SURFACE )
         {
             int[] surfaceAttribs = {EGL14.EGL_NONE};
-            mEglSurface = EGL14.eglCreateWindowSurface( mEglDisplay, mEglConfig, getHolder().getSurface(), surfaceAttribs, 0);
+            final Surface surface = mExternalSurface != null ? mExternalSurface : getHolder().getSurface();
+            mEglSurface = EGL14.eglCreateWindowSurface( mEglDisplay, mEglConfig, surface, surfaceAttribs, 0);
             if( mEglSurface == EGL14.EGL_NO_SURFACE )
             {
                 Log.e( TAG, EGL_CREATE_SURFACE_FAIL );
@@ -677,7 +697,8 @@ public class GameSurface extends SurfaceView implements SurfaceHolder.Callback
         // Terminate display connection
         if( mEglDisplay != null && mEglDisplay != EGL14.EGL_NO_DISPLAY )
         {
-            if( !EGL14.eglTerminate( mEglDisplay ) )
+            // The OpenXR session shares the default display, terminating it would break the session
+            if( mExternalSurface == null && !EGL14.eglTerminate( mEglDisplay ) )
             {
                 Log.e( TAG, EGL_TERMINATE_FAIL );
                 return false;
