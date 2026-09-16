@@ -911,9 +911,9 @@ bool controllerMatrix(const XrPosef* hands[HAND_COUNT], float* model) {
 
     XrVector3f center = {(l.x + r.x) * 0.5f, (l.y + r.y) * 0.5f, (l.z + r.z) * 0.5f};
     // Down into the hands and slightly away from the player
-    center = add(center, {-flatY.x * 0.03f - flatZ.x * 0.03f, -flatY.y * 0.03f - flatZ.y * 0.03f,
-                          -flatY.z * 0.03f - flatZ.z * 0.03f});
-    questxr::matrixFromBasis(x, flatY, flatZ, center, 1.0f, model);
+    center = add(center, {-flatY.x * 0.02f - flatZ.x * 0.03f, -flatY.y * 0.02f - flatZ.y * 0.03f,
+                          -flatY.z * 0.02f - flatZ.z * 0.03f});
+    questxr::matrixFromBasis(x, flatY, flatZ, center, 1.15f, model);
     return true;
 }
 

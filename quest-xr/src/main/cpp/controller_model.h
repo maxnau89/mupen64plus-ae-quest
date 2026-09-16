@@ -51,6 +51,7 @@ private:
     GLint lightLocation_ = -1;
     GLint texturedLocation_ = -1;
     GLint stickPivotLocation_ = -1;
+    GLint glowPassLocation_ = -1;
 };
 
 // Column-major 4x4 matrix helpers

@@ -249,15 +249,22 @@ uniform float uPressed[18];
 uniform float uAlpha;
 uniform vec3 uLight;
 uniform float uTextured;
+uniform float uGlowPass;
 uniform sampler2D uTexture;
 out vec4 outColor;
 void main() {
+    float pressed = uPressed[vPart];
+    if (uGlowPass > 0.5) {
+        // Second pass without depth test: pressed parts shine through the body, e.g. Z underneath
+        if (pressed < 0.5) discard;
+        outColor = vec4(min(uColors[vPart] * 1.5 + 0.45, vec3(1.0)), 0.55);
+        return;
+    }
     vec3 normal = normalize(vNormal);
     vec3 base = uTextured > 0.5 ? texture(uTexture, vUv).rgb : uColors[vPart];
     // Double sided meshes: light whichever side faces the light
     float diffuse = abs(dot(normal, uLight));
     vec3 color = base * (0.4 + 0.6 * diffuse);
-    float pressed = uPressed[vPart];
     // Pressed parts glow in their own color
     color = mix(color, min(max(base, uColors[vPart]) * 1.5 + 0.45, vec3(1.0)), pressed);
     outColor = vec4(color, mix(uAlpha, 1.0, pressed));
@@ -290,6 +297,7 @@ void main() {
     lightLocation_ = glGetUniformLocation(program_, "uLight");
     texturedLocation_ = glGetUniformLocation(program_, "uTextured");
     stickPivotLocation_ = glGetUniformLocation(program_, "uStickPivot");
+    glowPassLocation_ = glGetUniformLocation(program_, "uGlowPass");
 
     std::vector<Vertex> vertices;
     textured_ = asset.valid();
@@ -382,7 +390,22 @@ void ControllerModel::draw(const float* viewProjection, const float* model, cons
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, texture_);
     glBindVertexArray(vao_);
+    glUniform1f(glowPassLocation_, 0.0f);
     glDrawArrays(GL_TRIANGLES, 0, vertexCount_);
+
+    if (state.buttons != 0) {
+        const GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        // Straight alpha output for the unpremultiplied projection layer
+        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+        glUniform1f(glowPassLocation_, 1.0f);
+        glDrawArrays(GL_TRIANGLES, 0, vertexCount_);
+        glDisable(GL_BLEND);
+        if (depthTest) {
+            glEnable(GL_DEPTH_TEST);
+        }
+    }
     glBindVertexArray(0);
 }
 
