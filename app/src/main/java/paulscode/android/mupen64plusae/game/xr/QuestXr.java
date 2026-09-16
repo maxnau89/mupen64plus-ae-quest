@@ -1,6 +1,7 @@
 package paulscode.android.mupen64plusae.game.xr;
 
 import android.app.Activity;
+import android.graphics.SurfaceTexture;
 import android.os.Build;
 import android.util.Log;
 import android.view.Surface;
@@ -8,8 +9,9 @@ import android.view.Surface;
 /**
  * Thin wrapper around the native OpenXR session (quest-xr module).
  * <p>
- * The session renders a quad layer whose content comes from an Android surface swapchain;
- * the game surface draws into {@link #create}'s returned Surface instead of its SurfaceView.
+ * The session shows a quad layer; the game surface draws into {@link #create}'s returned Surface
+ * instead of its SurfaceView. That Surface either belongs to an Android surface swapchain, or to a
+ * SurfaceTexture that the native frame thread copies into a regular swapchain.
  */
 public class QuestXr
 {
@@ -43,7 +45,14 @@ public class QuestXr
         void onXrSessionState(int state);
     }
 
+    // nativeCreate results, must match quest_xr.cpp
+    private static final int MODE_FAILED = 0;
+    private static final int MODE_SURFACE_SWAPCHAIN = 1;
+    private static final int MODE_TEXTURE_SWAPCHAIN = 2;
+
     private static boolean sLibraryLoaded = false;
+    private static SurfaceTexture sSourceTexture = null;
+    private static Surface sSourceSurface = null;
 
     public static boolean isQuestDevice()
     {
@@ -72,7 +81,22 @@ public class QuestXr
         if (!isQuestDevice() || !loadLibrary()) {
             return null;
         }
-        return nativeCreate(activity, listener, width, height);
+        final int mode = nativeCreate(activity, listener, width, height);
+        Log.i(TAG, "XR mode " + mode);
+
+        switch (mode) {
+            case MODE_SURFACE_SWAPCHAIN:
+                return nativeGetSurface();
+            case MODE_TEXTURE_SWAPCHAIN:
+                // Created detached; the native frame thread attaches it to its own GL context
+                sSourceTexture = new SurfaceTexture(false);
+                sSourceTexture.setDefaultBufferSize(width, height);
+                nativeSetSourceTexture(sSourceTexture);
+                sSourceSurface = new Surface(sSourceTexture);
+                return sSourceSurface;
+            default:
+                return null;
+        }
     }
 
     /** Start the frame loop thread. */
@@ -87,6 +111,14 @@ public class QuestXr
         if (sLibraryLoaded) {
             nativeDestroy();
         }
+        if (sSourceSurface != null) {
+            sSourceSurface.release();
+            sSourceSurface = null;
+        }
+        if (sSourceTexture != null) {
+            sSourceTexture.release();
+            sSourceTexture = null;
+        }
     }
 
     /** Set the virtual screen width and distance, in meters. */
@@ -97,7 +129,9 @@ public class QuestXr
         }
     }
 
-    private static native Surface nativeCreate(Activity activity, Listener listener, int width, int height);
+    private static native int nativeCreate(Activity activity, Listener listener, int width, int height);
+    private static native Surface nativeGetSurface();
+    private static native void nativeSetSourceTexture(SurfaceTexture texture);
     private static native void nativeStart();
     private static native void nativeDestroy();
     private static native void nativeSetQuad(float width, float distance);
