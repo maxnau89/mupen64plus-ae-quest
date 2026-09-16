@@ -1,6 +1,8 @@
 package paulscode.android.mupen64plusae.game.xr;
 
 import android.app.Activity;
+import android.app.ActivityManager;
+import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
@@ -36,6 +38,7 @@ public class QuestNetplayActivity extends AppCompatActivity implements
     private static final String EXTRA_RSP_PLUGIN = "rspPlugin";
     private static final String EXTRA_SERVER_PORT = "serverPort";
     private static final String EXTRA_GAME_EXTRAS = "gameExtras";
+    private static final String EXTRA_GAME_TASK_ID = "gameTaskId";
     private static final String STATE_DIALOG = "STATE_NETPLAY_DIALOG";
 
     /** Implemented by GameActivity, which owns the core and the netplay server. */
@@ -59,6 +62,7 @@ public class QuestNetplayActivity extends AppCompatActivity implements
         intent.putExtra(EXTRA_RSP_PLUGIN, rspPlugin);
         intent.putExtra(EXTRA_SERVER_PORT, serverPort);
         intent.putExtra(EXTRA_GAME_EXTRAS, game.getIntent().getExtras());
+        intent.putExtra(EXTRA_GAME_TASK_ID, game.getTaskId());
         game.startActivity(intent);
     }
 
@@ -166,7 +170,19 @@ public class QuestNetplayActivity extends AppCompatActivity implements
 
     private void returnToGame()
     {
-        // GameActivity is still alive in the background; bring its immersive session back
+        // GameActivity is still alive in its own task. Horizon starts immersive activities in a new
+        // task, so starting GameActivity again would create a second instance instead of resuming it.
+        final int gameTaskId = getIntent().getIntExtra(EXTRA_GAME_TASK_ID, -1);
+        final ActivityManager activityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        if (gameTaskId != -1 && activityManager != null) {
+            try {
+                activityManager.moveTaskToFront(gameTaskId, 0);
+                return;
+            } catch (SecurityException e) {
+                Log.e(TAG, "Unable to move the game task to the front", e);
+            }
+        }
+
         final Intent intent = new Intent(this, GameActivity.class);
         final Bundle gameExtras = getIntent().getBundleExtra(EXTRA_GAME_EXTRAS);
         if (gameExtras != null) {
