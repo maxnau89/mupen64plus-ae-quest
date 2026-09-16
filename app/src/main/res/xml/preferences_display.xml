@@ -56,6 +56,7 @@
     <paulscode.android.mupen64plusae.preference.SeekBarPreference
         android:defaultValue="100"
         android:key="displayZoomSeek"
+        mupen64:isPreferenceVisible="false"
         android:title="@string/displayZoom_title"
         mupen64:maximumValue="130"
         mupen64:minimumValue="70"
@@ -66,6 +67,7 @@
         android:entries="@array/displayScaling_entries"
         android:entryValues="@array/displayScaling_values"
         android:key="displayScaling"
+        mupen64:isPreferenceVisible="false"
         android:summary="@string/selectedValue"
         android:title="@string/displayScaling_title" />
 
@@ -74,18 +76,21 @@
         android:entries="@array/displayOrientation_entries"
         android:entryValues="@array/displayOrientation_values"
         android:key="displayOrientation"
+        mupen64:isPreferenceVisible="false"
         android:summary="@string/selectedValue"
         android:title="@string/displayOrientation_title" />
 
     <androidx.preference.CheckBoxPreference
         android:defaultValue="true"
         android:key="displayImmersiveMode_v2"
+        mupen64:isPreferenceVisible="false"
         android:summary="@string/displayImmersiveMode_summary"
         android:title="@string/displayImmersiveMode_title" />
 
     <paulscode.android.mupen64plusae.preference.SeekBarPreference
         android:defaultValue="80"
         android:key="displayActionBarTransparency"
+        mupen64:isPreferenceVisible="false"
         android:title="@string/displayActionBarTransparency_title"
         mupen64:maximumValue="100"
         mupen64:minimumValue="30"
@@ -97,6 +102,7 @@
         android:entries="@array/displayFps_entries"
         android:entryValues="@array/displayFps_values"
         android:key="displayFpsV2"
+        mupen64:isPreferenceVisible="false"
         android:summary="@string/selectedValue"
         android:title="@string/displayFps_title" />
 

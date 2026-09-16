@@ -84,30 +84,35 @@
         android:entries="@array/inGameMenuSetting_entries"
         android:entryValues="@array/inGameMenuSetting_values"
         android:key="inGameMenu"
+        mupen64:isPreferenceVisible="false"
         android:summary="@string/selectedValue"
         android:title="@string/inGameMenuSetting_title" />
 
     <androidx.preference.CheckBoxPreference
         android:defaultValue="false"
         android:key="inputVolumeMappable"
+        mupen64:isPreferenceVisible="false"
         android:summary="@string/inputVolumeMappable_summary"
         android:title="@string/inputVolumeMappable_title" />
 
     <androidx.preference.CheckBoxPreference
         android:defaultValue="false"
         android:key="inputBackMappable"
+        mupen64:isPreferenceVisible="false"
         android:summary="@string/inputBackMappable_summary"
         android:title="@string/inputBackMappable_title" />
 
     <androidx.preference.CheckBoxPreference
         android:defaultValue="false"
         android:key="inputMenuMappable"
+        mupen64:isPreferenceVisible="false"
         android:summary="@string/inputMenuMappable_summary"
         android:title="@string/inputMenuMappable_title" />
 
     <androidx.preference.CheckBoxPreference
         android:defaultValue="true"
         android:key="holdButtonForMenu"
+        mupen64:isPreferenceVisible="false"
         android:summary="@string/inputHoldControllerMenuKey_summary"
         android:title="@string/inputHoldControllerMenuKey_title" />
 

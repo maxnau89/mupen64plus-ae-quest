@@ -57,6 +57,7 @@
     <paulscode.android.mupen64plusae.preference.ProfilePreference
         android:icon="@drawable/ic_sliders"
         android:key="touchscreenProfileDefault"
+        mupen64:isPreferenceVisible="false"
         android:summary="@string/selectedValue"
         android:title="@string/touchscreenProfile_title"
         mupen64:allowDisable="false"
@@ -64,6 +65,7 @@
     <paulscode.android.mupen64plusae.preference.ProfilePreference
         android:icon="@drawable/ic_sliders"
         android:key="touchscreenProfileDpadDefault"
+        mupen64:isPreferenceVisible="false"
         android:summary="@string/selectedValue"
         android:title="@string/touchscreenProfileDpad_title"
         mupen64:allowDisable="false"

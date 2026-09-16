@@ -377,6 +377,12 @@
             </intent-filter>
             <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
         </activity>
+        <!-- Meta Quest: netplay room setup as a 2D window while the game is immersive -->
+        <activity
+            android:name="paulscode.android.mupen64plusae.game.xr.QuestNetplayActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Mupen64plusaeTheme"
+            android:process=":EmulationProcess" />
         <activity
             android:name="paulscode.android.mupen64plusae.ImportExportActivity"
             android:exported="false"

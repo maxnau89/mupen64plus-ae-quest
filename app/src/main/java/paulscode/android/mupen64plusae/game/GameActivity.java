@@ -91,6 +91,7 @@ import paulscode.android.mupen64plusae.dialog.Prompt;
 import paulscode.android.mupen64plusae.input.PeripheralController;
 import paulscode.android.mupen64plusae.input.SensorController;
 import paulscode.android.mupen64plusae.game.xr.QuestN64Overlay;
+import paulscode.android.mupen64plusae.game.xr.QuestNetplayActivity;
 import paulscode.android.mupen64plusae.game.xr.QuestVrMenu;
 import paulscode.android.mupen64plusae.game.xr.QuestXr;
 import paulscode.android.mupen64plusae.input.AbstractController;
@@ -162,7 +163,8 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         GameSidebarActionHandler, CoreEventListener, View.OnTouchListener,
         NetplayClientSetupDialog.OnServerDialogActionListener,
         NetplayServerSetupDialog.OnClientDialogActionListener, NetplayFragment.NetplayListener,
-        RetroAchievementsManager.GameLoadListener, QuestTouchController.SessionListener, QuestVrMenu.Host
+        RetroAchievementsManager.GameLoadListener, QuestTouchController.SessionListener, QuestVrMenu.Host,
+        QuestNetplayActivity.Host
 {
     private static final String TAG = "GameActivity";
 
@@ -219,6 +221,7 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     private boolean mXrPassthroughSupported = false;
     private boolean mXrPassthrough = false;
     private boolean mXrAdjusting = false;
+    private boolean mXrNetplaySetupLaunched = false;
     private int mXrControllerMode = QuestN64Overlay.MODE_HANDS;
     // Game screen pose in the tracking space
     private float mXrScreenX = 0.0f;
@@ -807,7 +810,8 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         //on a shutdown
         if(!this.isChangingConfigurations() && mCoreFragment != null)
         {
-            if(mGlobalPrefs.maxAutoSaves != 0)
+            // In VR the game is stopped while the netplay room is set up in a 2D window, don't save then
+            if(mGlobalPrefs.maxAutoSaves != 0 && !(mXrMode && mIsNetplayEnabled))
             {
                 mCoreFragment.autoSaveState(false);
             }
@@ -1887,6 +1891,16 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     @Override
     public void onNetplayReady()
     {
+        if (mIsNetplayEnabled && mXrMode) {
+            // Dialogs are invisible in VR, set up the room in a 2D window instead
+            if (!mXrNetplaySetupLaunched) {
+                mXrNetplaySetupLaunched = true;
+                QuestNetplayActivity.launch(this, this, mIsNetplayServer, mRomMd5,
+                        mGamePrefs.videoPluginLib.getPluginLib(), mGamePrefs.rspPluginLib.getPluginLib(), mServerPort);
+            }
+            return;
+        }
+
         if (mIsNetplayEnabled) {
             final FragmentManager fm = this.getSupportFragmentManager();
 
@@ -2307,6 +2321,9 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     {
         if (mIsNetplayServer && mNetplayServerDialog != null) {
             mNetplayServerDialog.onUpnpPortsObtained(tcpPort1, tcpPort2, udpPort2);
+        }
+        if (mXrMode) {
+            QuestNetplayActivity.onUpnpPortsObtained(tcpPort1, tcpPort2, udpPort2);
         }
     }
 }

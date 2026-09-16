@@ -24,6 +24,7 @@ import paulscode.android.mupen64plusae.profile.ControllerProfile;
 import paulscode.android.mupen64plusae.profile.Profile;
 import paulscode.android.mupen64plusae.util.FileUtil;
 import paulscode.android.mupen64plusae.util.Plugin;
+import paulscode.android.mupen64plusae.game.xr.QuestXr;
 
 @SuppressWarnings("WeakerAccess")
 public class GamePrefs
@@ -515,7 +516,8 @@ public class GamePrefs
                 mPreferences.getInt( DISPLAY_ZOOM, 100 );
 
         // Touchscreen prefs
-        isTouchscreenEnabled = touchscreenProfile != null;
+        // No touchscreen controls on Meta Quest, the game is played with Touch controllers in VR
+        isTouchscreenEnabled = touchscreenProfile != null && !QuestXr.isQuestDevice();
 
         if ( isTouchscreenEnabled )
         {
