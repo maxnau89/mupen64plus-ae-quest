@@ -7,8 +7,8 @@
     <string name="questMenu_slot">Slot:  ◀ %1$d ▶</string>
     <string name="questMenu_passthrough">Passthrough: %1$s</string>
     <string name="questMenu_controller">Controller display:  ◀ %1$s ▶</string>
-    <string name="questMenu_controllerHands">N64 at hands</string>
-    <string name="questMenu_controllerScreen">N64 below screen</string>
+    <string name="questMenu_controllerHands">3D N64 in hands</string>
+    <string name="questMenu_controllerScreen">2D N64 below screen</string>
     <string name="questMenu_controllerOff">Off</string>
     <string name="questMenu_speed">Speed: %1$d %%</string>
     <string name="questMenu_frameLimiter">Frame limiter: %1$s</string>

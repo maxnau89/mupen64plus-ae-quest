@@ -23,7 +23,9 @@ public class QuestN64Overlay
 {
     private static final String TAG = "QuestN64Overlay";
 
+    /** 3D controller between the hands */
     public static final int MODE_HANDS = 0;
+    /** This 2D overlay below the game screen */
     public static final int MODE_SCREEN = 1;
     public static final int MODE_OFF = 2;
     public static final int MODE_COUNT = 3;

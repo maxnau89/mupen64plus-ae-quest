@@ -9,8 +9,8 @@ import android.view.Surface;
 /**
  * Thin wrapper around the native OpenXR session (quest-xr module).
  * <p>
- * The session shows quad layers for the game, the VR menu and a virtual N64 controller,
- * optionally over passthrough.
+ * The session shows quad layers for the game, a panel frame behind it, the VR menu and a 2D N64
+ * controller, a 3D N64 controller in the projection layer, optionally over passthrough.
  * Each quad gets a Surface backed by a SurfaceTexture; the native frame thread copies whatever
  * is drawn into it into an OpenXR swapchain.
  */
@@ -41,7 +41,8 @@ public class QuestXr
     public static final int QUAD_GAME = 0;
     public static final int QUAD_MENU = 1;
     public static final int QUAD_CONTROLLER = 2;
-    private static final int QUAD_COUNT = 3;
+    public static final int QUAD_PANEL = 3;
+    private static final int QUAD_COUNT = 4;
 
     // Quad attach modes, must match quest_xr.cpp
     /** Position and yaw in the tracking space */
@@ -90,17 +91,19 @@ public class QuestXr
      * @return False if XR is unavailable
      */
     public static boolean create(Activity activity, Listener listener, int gameWidth, int gameHeight,
-                                 int menuWidth, int menuHeight, int controllerWidth, int controllerHeight)
+                                 int menuWidth, int menuHeight, int controllerWidth, int controllerHeight,
+                                 int panelWidth, int panelHeight)
     {
         if (!isQuestDevice() || !loadLibrary()) {
             return false;
         }
         if (!nativeCreate(activity, listener, gameWidth, gameHeight, menuWidth, menuHeight,
-                controllerWidth, controllerHeight)) {
+                controllerWidth, controllerHeight, panelWidth, panelHeight)) {
             return false;
         }
 
-        final int[][] sizes = {{gameWidth, gameHeight}, {menuWidth, menuHeight}, {controllerWidth, controllerHeight}};
+        final int[][] sizes = {{gameWidth, gameHeight}, {menuWidth, menuHeight}, {controllerWidth, controllerHeight},
+                {panelWidth, panelHeight}};
         for (int quad = 0; quad < QUAD_COUNT; ++quad) {
             // Created detached; the native frame thread attaches it to its own GL context
             sTextures[quad] = new SurfaceTexture(false);
@@ -164,6 +167,33 @@ public class QuestXr
         }
     }
 
+    /**
+     * State shown by the 3D controller. Safe to call from any thread.
+     * @param buttons Bit i set when N64 button i (AbstractController indices) is pressed
+     */
+    public static void setN64State(int buttons, float axisX, float axisY)
+    {
+        if (sLibraryLoaded) {
+            nativeSetN64State(buttons, axisX, axisY);
+        }
+    }
+
+    /** Show the 3D N64 controller between the hands. */
+    public static void setController3dVisible(boolean visible)
+    {
+        if (sLibraryLoaded) {
+            nativeSetController3dVisible(visible);
+        }
+    }
+
+    /** Move the game screen straight ahead of the current head direction; reported via onXrScreenMoved. */
+    public static void recenterScreen(float distance, float width)
+    {
+        if (sLibraryLoaded) {
+            nativeRecenterScreen(distance, width);
+        }
+    }
+
     /** @return False if passthrough is not supported */
     public static boolean setPassthrough(boolean enabled)
     {
@@ -172,11 +202,14 @@ public class QuestXr
 
     private static native boolean nativeCreate(Activity activity, Listener listener, int gameWidth, int gameHeight,
                                                int menuWidth, int menuHeight, int controllerWidth,
-                                               int controllerHeight);
+                                               int controllerHeight, int panelWidth, int panelHeight);
     private static native void nativeSetSourceTexture(int quad, SurfaceTexture texture);
     private static native void nativeSetQuad(int quad, boolean visible, int attach, float x, float y, float z,
                                              float yaw, float width, boolean blendAlpha);
     private static native void nativeSetGrabEnabled(boolean enabled);
+    private static native void nativeSetN64State(int buttons, float axisX, float axisY);
+    private static native void nativeSetController3dVisible(boolean visible);
+    private static native void nativeRecenterScreen(float distance, float width);
     private static native boolean nativeSetPassthrough(boolean enabled);
     private static native void nativeStart();
     private static native void nativeDestroy();

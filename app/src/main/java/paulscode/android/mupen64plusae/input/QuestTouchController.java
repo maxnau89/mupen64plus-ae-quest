@@ -13,7 +13,7 @@ import paulscode.android.mupen64plusae.jni.CoreFragment;
  * Maps Meta Quest Touch controllers (read through OpenXR) to player 1's N64 controller.
  * <p>
  * Left stick: analog stick. Right stick: C buttons, or D-pad while Y is held.
- * A/B: A/B. Left trigger: Z. Right trigger or right grip: R. Left grip: L.
+ * A/B: A/B. Left trigger: L. Left grip: Z. Right trigger or right grip: R.
  * Menu: Start when tapped, VR menu when held.
  * <p>
  * While the VR menu is open, input navigates the menu instead of reaching the game.
@@ -126,9 +126,9 @@ public class QuestTouchController extends AbstractController implements QuestXr.
         b[BTN_A] = (buttons & QuestXr.BTN_A) != 0;
         b[BTN_B] = (buttons & QuestXr.BTN_B) != 0;
         b[START] = now < mStartPulseUntil;
-        b[BTN_Z] = leftTrigger > TRIGGER_THRESHOLD;
+        b[BTN_L] = leftTrigger > TRIGGER_THRESHOLD;
+        b[BTN_Z] = leftGrip > TRIGGER_THRESHOLD;
         b[BTN_R] = rightTrigger > TRIGGER_THRESHOLD || rightGrip > TRIGGER_THRESHOLD;
-        b[BTN_L] = leftGrip > TRIGGER_THRESHOLD;
 
         final boolean right = rightX > DIRECTION_THRESHOLD;
         final boolean left = rightX < -DIRECTION_THRESHOLD;
@@ -233,6 +233,14 @@ public class QuestTouchController extends AbstractController implements QuestXr.
         System.arraycopy(mState.buttons, 0, mReportedButtons, 0, NUM_N64_BUTTONS);
         mReportedX = mState.axisFractionX;
         mReportedY = mState.axisFractionY;
+
+        int mask = 0;
+        for (int i = 0; i < NUM_N64_BUTTONS; ++i) {
+            if (mReportedButtons[i]) {
+                mask |= 1 << i;
+            }
+        }
+        QuestXr.setN64State(mask, mReportedX, mReportedY);
 
         final boolean[] buttons = mReportedButtons.clone();
         final float x = mReportedX;

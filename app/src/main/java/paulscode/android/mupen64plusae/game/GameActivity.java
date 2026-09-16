@@ -55,6 +55,11 @@ import android.view.KeyEvent;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.graphics.Color;
+import android.view.Surface;
+import android.graphics.RectF;
+import android.graphics.PorterDuff;
+import android.graphics.Paint;
+import android.graphics.Canvas;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.PointerIcon;
@@ -209,6 +214,12 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     private static final int XR_CONTROLLER_HEIGHT = 512;
     private static final float XR_DEFAULT_SCREEN_DISTANCE = 2.0f;
     private static final float XR_DEFAULT_SCREEN_SIZE = 2.0f;
+    // Passthrough: the game sits in a panel shaped like the Horizon window of the ROM list
+    private static final String XR_PREF_PASSTHROUGH_PREFIX = "passthrough_";
+    private static final int XR_PANEL_WIDTH = 800;
+    private static final int XR_PANEL_HEIGHT = 450;
+    private static final float XR_PANEL_HEIGHT_METERS = 0.628f;
+    private static final float XR_PANEL_DISTANCE = 1.37f;
     private boolean mXrMode = false;
     private boolean mXrExitRequested = false;
     private boolean mXrPassthroughSupported = false;
@@ -541,7 +552,8 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
             if (QuestXr.create(this, mQuestTouchController,
                     mDisplayResolutionData.getResolutionWidth(mGamePrefs.verticalRenderResolution)*mGlobalPrefs.shaderScaleFactor,
                     mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution)*mGlobalPrefs.shaderScaleFactor,
-                    XR_MENU_WIDTH, XR_MENU_HEIGHT, XR_CONTROLLER_WIDTH, XR_CONTROLLER_HEIGHT)) {
+                    XR_MENU_WIDTH, XR_MENU_HEIGHT, XR_CONTROLLER_WIDTH, XR_CONTROLLER_HEIGHT,
+                    XR_PANEL_WIDTH, XR_PANEL_HEIGHT)) {
                 mXrMode = true;
                 mGameSurface.setExternalSurface(QuestXr.getSurface(QuestXr.QUAD_GAME));
                 mQuestVrMenu = new QuestVrMenu(QuestXr.getSurface(QuestXr.QUAD_MENU), XR_MENU_WIDTH, XR_MENU_HEIGHT,
@@ -549,18 +561,13 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
                 mQuestN64Overlay = new QuestN64Overlay(QuestXr.getSurface(QuestXr.QUAD_CONTROLLER),
                         XR_CONTROLLER_WIDTH, XR_CONTROLLER_HEIGHT);
                 mQuestN64Overlay.update(new boolean[AbstractController.NUM_N64_BUTTONS], 0, 0);
+                drawXrPanel();
 
                 final SharedPreferences xrPrefs = getSharedPreferences(XR_PREFS, MODE_PRIVATE);
-                mXrScreenX = xrPrefs.getFloat(XR_PREF_SCREEN_X, 0.0f);
-                mXrScreenY = xrPrefs.getFloat(XR_PREF_SCREEN_Y, 0.0f);
-                // Older versions only stored a distance straight ahead
-                mXrScreenZ = xrPrefs.getFloat(XR_PREF_SCREEN_Z,
-                        -xrPrefs.getFloat(XR_PREF_SCREEN_DISTANCE, XR_DEFAULT_SCREEN_DISTANCE));
-                mXrScreenYaw = xrPrefs.getFloat(XR_PREF_SCREEN_YAW, 0.0f);
-                mXrScreenSize = xrPrefs.getFloat(XR_PREF_SCREEN_SIZE, XR_DEFAULT_SCREEN_SIZE);
                 mXrControllerMode = xrPrefs.getInt(XR_PREF_CONTROLLER_MODE, QuestN64Overlay.MODE_HANDS);
                 mXrPassthroughSupported = QuestXr.setPassthrough(xrPrefs.getBoolean(XR_PREF_PASSTHROUGH, false));
                 mXrPassthrough = mXrPassthroughSupported && xrPrefs.getBoolean(XR_PREF_PASSTHROUGH, false);
+                loadXrScreen();
                 updateXrQuads();
                 QuestXr.start();
             } else {
@@ -872,25 +879,79 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         }
     }
 
+    /** Width divided by height of the game image */
+    private float getXrGameAspect()
+    {
+        return (float) mDisplayResolutionData.getResolutionWidth(mGamePrefs.verticalRenderResolution)
+                / mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution);
+    }
+
+    private String getXrScreenPrefPrefix()
+    {
+        return mXrPassthrough ? XR_PREF_PASSTHROUGH_PREFIX : "";
+    }
+
+    private float getXrDefaultScreenDistance()
+    {
+        return mXrPassthrough ? XR_PANEL_DISTANCE : XR_DEFAULT_SCREEN_DISTANCE;
+    }
+
+    private float getXrDefaultScreenSize()
+    {
+        // In passthrough the game fills the height of the panel
+        return mXrPassthrough ? XR_PANEL_HEIGHT_METERS * getXrGameAspect() : XR_DEFAULT_SCREEN_SIZE;
+    }
+
+    /** Load the screen pose of the current mode, VR and passthrough are stored separately. */
+    private void loadXrScreen()
+    {
+        final SharedPreferences xrPrefs = getSharedPreferences(XR_PREFS, MODE_PRIVATE);
+        final String prefix = getXrScreenPrefPrefix();
+        mXrScreenX = xrPrefs.getFloat(prefix + XR_PREF_SCREEN_X, 0.0f);
+        mXrScreenY = xrPrefs.getFloat(prefix + XR_PREF_SCREEN_Y, 0.0f);
+        // Older versions only stored a distance straight ahead
+        mXrScreenZ = xrPrefs.getFloat(prefix + XR_PREF_SCREEN_Z,
+                -xrPrefs.getFloat(prefix + XR_PREF_SCREEN_DISTANCE, getXrDefaultScreenDistance()));
+        mXrScreenYaw = xrPrefs.getFloat(prefix + XR_PREF_SCREEN_YAW, 0.0f);
+        mXrScreenSize = xrPrefs.getFloat(prefix + XR_PREF_SCREEN_SIZE, getXrDefaultScreenSize());
+    }
+
+    /** Draws the panel frame shown behind the game in passthrough, like a Horizon window. */
+    private void drawXrPanel()
+    {
+        final Surface surface = QuestXr.getSurface(QuestXr.QUAD_PANEL);
+        if (surface == null || !surface.isValid()) {
+            return;
+        }
+        final Canvas canvas = surface.lockHardwareCanvas();
+        try {
+            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            paint.setColor(Color.argb(245, 26, 27, 31));
+            canvas.drawRoundRect(new RectF(0, 0, XR_PANEL_WIDTH, XR_PANEL_HEIGHT), 22, 22, paint);
+        } finally {
+            surface.unlockCanvasAndPost(canvas);
+        }
+    }
+
     private void updateXrQuads()
     {
         final boolean menuOpen = mQuestVrMenu != null && mQuestVrMenu.isOpen();
+        final float screenHeight = mXrScreenSize / getXrGameAspect();
+
         QuestXr.setQuad(QuestXr.QUAD_GAME, true, QuestXr.ATTACH_WORLD, mXrScreenX, mXrScreenY, mXrScreenZ,
                 mXrScreenYaw, mXrScreenSize, false);
+        // 16:9 panel around the game, as wide as needed for widescreen games
+        QuestXr.setQuad(QuestXr.QUAD_PANEL, mXrPassthrough, QuestXr.ATTACH_GAME, 0.0f, 0.0f, 0.0f, 0.0f,
+                Math.max(screenHeight * 16.0f / 9.0f, mXrScreenSize), true);
         // Slightly in front of the game screen
         QuestXr.setQuad(QuestXr.QUAD_MENU, menuOpen, QuestXr.ATTACH_GAME, 0.0f, 0.0f, 0.4f, 0.0f, XR_MENU_SIZE, true);
 
-        if (mXrControllerMode == QuestN64Overlay.MODE_HANDS) {
-            QuestXr.setQuad(QuestXr.QUAD_CONTROLLER, true, QuestXr.ATTACH_HANDS, 0.0f, 0.12f, 0.0f, 0.0f, 0.30f, true);
-        } else {
-            // Below the screen, tilted a little towards the viewer by being slightly closer
-            final float screenHeight = mXrScreenSize * mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution)
-                    / mDisplayResolutionData.getResolutionWidth(mGamePrefs.verticalRenderResolution);
-            final float width = mXrScreenSize * 0.35f;
-            final float height = width * XR_CONTROLLER_HEIGHT / XR_CONTROLLER_WIDTH;
-            QuestXr.setQuad(QuestXr.QUAD_CONTROLLER, mXrControllerMode == QuestN64Overlay.MODE_SCREEN,
-                    QuestXr.ATTACH_GAME, 0.0f, -(screenHeight + height) / 2.0f - 0.05f, 0.05f, 0.0f, width, true);
-        }
+        QuestXr.setController3dVisible(mXrControllerMode == QuestN64Overlay.MODE_HANDS);
+        final float width = mXrScreenSize * 0.35f;
+        final float height = width * XR_CONTROLLER_HEIGHT / XR_CONTROLLER_WIDTH;
+        QuestXr.setQuad(QuestXr.QUAD_CONTROLLER, mXrControllerMode == QuestN64Overlay.MODE_SCREEN,
+                QuestXr.ATTACH_GAME, 0.0f, -(screenHeight + height) / 2.0f - 0.05f, 0.05f, 0.0f, width, true);
     }
 
     @Override
@@ -990,12 +1051,14 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
             QuestXr.setPassthrough(false);
         }
         getSharedPreferences(XR_PREFS, MODE_PRIVATE).edit().putBoolean(XR_PREF_PASSTHROUGH, mXrPassthrough).apply();
+        loadXrScreen();
+        updateXrQuads();
     }
 
     @Override
     public void onVrMenuResetScreen()
     {
-        onXrScreenMoved(0.0f, 0.0f, -XR_DEFAULT_SCREEN_DISTANCE, 0.0f, XR_DEFAULT_SCREEN_SIZE);
+        QuestXr.recenterScreen(getXrDefaultScreenDistance(), getXrDefaultScreenSize());
     }
 
     @Override
@@ -1021,12 +1084,13 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         mXrScreenYaw = yaw;
         mXrScreenSize = width;
         updateXrQuads();
+        final String prefix = getXrScreenPrefPrefix();
         getSharedPreferences(XR_PREFS, MODE_PRIVATE).edit()
-                .putFloat(XR_PREF_SCREEN_X, x)
-                .putFloat(XR_PREF_SCREEN_Y, y)
-                .putFloat(XR_PREF_SCREEN_Z, z)
-                .putFloat(XR_PREF_SCREEN_YAW, yaw)
-                .putFloat(XR_PREF_SCREEN_SIZE, width)
+                .putFloat(prefix + XR_PREF_SCREEN_X, x)
+                .putFloat(prefix + XR_PREF_SCREEN_Y, y)
+                .putFloat(prefix + XR_PREF_SCREEN_Z, z)
+                .putFloat(prefix + XR_PREF_SCREEN_YAW, yaw)
+                .putFloat(prefix + XR_PREF_SCREEN_SIZE, width)
                 .apply();
     }
 
