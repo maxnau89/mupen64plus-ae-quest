@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Meta Quest VR menu -->
+<resources>
+    <string name="questMenu_resume">Resume</string>
+    <string name="questMenu_save">Save state (slot %1$d)</string>
+    <string name="questMenu_load">Load state (slot %1$d)</string>
+    <string name="questMenu_slot">Slot:  ◀ %1$d ▶</string>
+    <string name="questMenu_passthrough">Passthrough: %1$s</string>
+    <string name="questMenu_controller">Controller display:  ◀ %1$s ▶</string>
+    <string name="questMenu_controllerHands">N64 at hands</string>
+    <string name="questMenu_controllerScreen">N64 below screen</string>
+    <string name="questMenu_controllerOff">Off</string>
+    <string name="questMenu_speed">Speed: %1$d %%</string>
+    <string name="questMenu_frameLimiter">Frame limiter: %1$s</string>
+    <string name="questMenu_screenshot">Screenshot</string>
+    <string name="questMenu_screenshotSaved">Screenshot saved</string>
+    <string name="questMenu_resetScreen">Reset screen position</string>
+    <string name="questMenu_reset">Reset game</string>
+    <string name="questMenu_resetConfirm">Reset game? Press A to confirm</string>
+    <string name="questMenu_exit">Exit game</string>
+    <string name="questMenu_exitConfirm">Exit game? Press A to confirm</string>
+    <string name="questMenu_on">On</string>
+    <string name="questMenu_off">Off</string>
+    <string name="questMenu_hintNavigate">Stick: select   ◀▶: change   A: OK   B: back</string>
+    <string name="questMenu_hintGrab">Hold grip: move screen   Stick while holding: resize</string>
+</resources>

@@ -13,8 +13,8 @@ import paulscode.android.mupen64plusae.jni.CoreFragment;
  * Maps Meta Quest Touch controllers (read through OpenXR) to player 1's N64 controller.
  * <p>
  * Left stick: analog stick. Right stick: C buttons, or D-pad while Y is held.
- * A/B: A/B. Left trigger: Z. Right trigger or right grip: R. Left grip: L. Menu: Start.
- * X + Menu: VR menu. Y + Menu: exit the game. Left stick click: toggle passthrough.
+ * A/B: A/B. Left trigger: Z. Right trigger or right grip: R. Left grip: L.
+ * Menu: Start when tapped, VR menu when held.
  * <p>
  * While the VR menu is open, input navigates the menu instead of reaching the game.
  */
@@ -29,8 +29,6 @@ public class QuestTouchController extends AbstractController implements QuestXr.
 
         void onXrMenuToggleRequested();
 
-        void onXrPassthroughToggleRequested();
-
         void onXrMenuNavigate(int direction);
 
         void onXrMenuAdjust(int direction);
@@ -38,12 +36,19 @@ public class QuestTouchController extends AbstractController implements QuestXr.
         void onXrMenuActivate();
 
         void onXrMenuBack();
+
+        void onXrScreenMoved(float x, float y, float z, float yaw, float width);
+
+        /** The N64 controller state changed, arrays are copies. */
+        void onN64StateChanged(boolean[] buttons, float axisX, float axisY);
     }
 
     private static final float STICK_DEADZONE = 0.15f;
     private static final float DIRECTION_THRESHOLD = 0.5f;
     private static final float MENU_THRESHOLD = 0.6f;
     private static final float TRIGGER_THRESHOLD = 0.4f;
+    private static final long MENU_HOLD_MS = 600;
+    private static final long START_PULSE_MS = 120;
     private static final long REPEAT_DELAY_MS = 400;
     private static final long REPEAT_INTERVAL_MS = 150;
 
@@ -53,11 +58,21 @@ public class QuestTouchController extends AbstractController implements QuestXr.
     private boolean mFocused = false;
     private int mLastButtons = 0;
 
+    // Menu button: tap = Start pulse, hold = VR menu
+    private long mMenuDownTime = 0;
+    private boolean mMenuHoldConsumed = false;
+    private long mStartPulseUntil = 0;
+
     // Menu stick repeat state, per axis
     private int mVerticalDirection = 0;
     private long mVerticalNextRepeat = 0;
     private int mHorizontalDirection = 0;
     private long mHorizontalNextRepeat = 0;
+
+    // Last state sent to the overlay
+    private final boolean[] mReportedButtons = new boolean[NUM_N64_BUTTONS];
+    private float mReportedX = 0;
+    private float mReportedY = 0;
 
     public QuestTouchController(CoreFragment coreFragment, SessionListener sessionListener)
     {
@@ -75,43 +90,42 @@ public class QuestTouchController extends AbstractController implements QuestXr.
     public void onXrInput(float leftX, float leftY, float rightX, float rightY,
                           float leftTrigger, float rightTrigger, float leftGrip, float rightGrip, int buttons)
     {
+        final long now = SystemClock.uptimeMillis();
         final int pressed = buttons & ~mLastButtons;
+        final int released = ~buttons & mLastButtons;
         mLastButtons = buttons;
 
-        final boolean menu = (buttons & QuestXr.BTN_MENU) != 0;
-        final boolean xHeld = (buttons & QuestXr.BTN_X) != 0;
-        final boolean yHeld = (buttons & QuestXr.BTN_Y) != 0;
-        final boolean menuPressed = (pressed & QuestXr.BTN_MENU) != 0;
-
-        // Combos trigger when the second button goes down
-        final boolean menuCombo = xHeld && menu && (menuPressed || (pressed & QuestXr.BTN_X) != 0);
-        final boolean exitCombo = yHeld && menu && (menuPressed || (pressed & QuestXr.BTN_Y) != 0);
+        boolean menuTapped = false;
+        if ((pressed & QuestXr.BTN_MENU) != 0) {
+            mMenuDownTime = now;
+            mMenuHoldConsumed = false;
+        } else if ((buttons & QuestXr.BTN_MENU) != 0 && !mMenuHoldConsumed && now - mMenuDownTime >= MENU_HOLD_MS) {
+            mMenuHoldConsumed = true;
+            releaseAll();
+            post(mSessionListener::onXrMenuToggleRequested);
+            return;
+        } else if ((released & QuestXr.BTN_MENU) != 0 && !mMenuHoldConsumed) {
+            menuTapped = true;
+        }
 
         if (mMenuOpen) {
-            if (menuCombo) {
+            if (menuTapped) {
                 post(mSessionListener::onXrMenuToggleRequested);
             } else {
-                handleMenuInput(leftX, leftY, rightX, rightY, pressed);
+                handleMenuInput(leftX, leftY, rightX, rightY, pressed, now);
             }
             return;
         }
 
-        if (menuCombo) {
-            releaseAll();
-            post(mSessionListener::onXrMenuToggleRequested);
-            return;
-        }
-        if (exitCombo) {
-            post(mSessionListener::onXrExitRequested);
-        }
-        if ((pressed & QuestXr.BTN_LSTICK) != 0) {
-            post(mSessionListener::onXrPassthroughToggleRequested);
+        if (menuTapped) {
+            mStartPulseUntil = now + START_PULSE_MS;
         }
 
+        final boolean yHeld = (buttons & QuestXr.BTN_Y) != 0;
         final boolean[] b = mState.buttons;
         b[BTN_A] = (buttons & QuestXr.BTN_A) != 0;
         b[BTN_B] = (buttons & QuestXr.BTN_B) != 0;
-        b[START] = menu && !xHeld && !yHeld;
+        b[START] = now < mStartPulseUntil;
         b[BTN_Z] = leftTrigger > TRIGGER_THRESHOLD;
         b[BTN_R] = rightTrigger > TRIGGER_THRESHOLD || rightGrip > TRIGGER_THRESHOLD;
         b[BTN_L] = leftGrip > TRIGGER_THRESHOLD;
@@ -134,12 +148,11 @@ public class QuestTouchController extends AbstractController implements QuestXr.
         mState.axisFractionY = applyDeadzone(leftY);
 
         notifyChanged(false);
+        reportState();
     }
 
-    private void handleMenuInput(float leftX, float leftY, float rightX, float rightY, int pressed)
+    private void handleMenuInput(float leftX, float leftY, float rightX, float rightY, int pressed, long now)
     {
-        final long now = SystemClock.uptimeMillis();
-
         // Either stick navigates; stick up means previous item
         final float vertical = Math.abs(leftY) > Math.abs(rightY) ? leftY : rightY;
         final float horizontal = Math.abs(leftX) > Math.abs(rightX) ? leftX : rightX;
@@ -194,13 +207,37 @@ public class QuestTouchController extends AbstractController implements QuestXr.
         }
     }
 
+    @Override
+    public void onXrScreenMoved(float x, float y, float z, float yaw, float width)
+    {
+        post(() -> mSessionListener.onXrScreenMoved(x, y, z, yaw, width));
+    }
+
     /** Release all N64 buttons and center the stick. */
     public void releaseAll()
     {
         Arrays.fill(mState.buttons, false);
         mState.axisFractionX = 0;
         mState.axisFractionY = 0;
+        mStartPulseUntil = 0;
         notifyChanged(false);
+        reportState();
+    }
+
+    private void reportState()
+    {
+        if (Arrays.equals(mState.buttons, mReportedButtons) && mState.axisFractionX == mReportedX
+                && mState.axisFractionY == mReportedY) {
+            return;
+        }
+        System.arraycopy(mState.buttons, 0, mReportedButtons, 0, NUM_N64_BUTTONS);
+        mReportedX = mState.axisFractionX;
+        mReportedY = mState.axisFractionY;
+
+        final boolean[] buttons = mReportedButtons.clone();
+        final float x = mReportedX;
+        final float y = mReportedY;
+        post(() -> mSessionListener.onN64StateChanged(buttons, x, y));
     }
 
     private void post(Runnable runnable)

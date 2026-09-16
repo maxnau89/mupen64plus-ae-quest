@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Meta Quest VR menu -->
+<resources>
+    <string name="questMenu_resume">Weiterspielen</string>
+    <string name="questMenu_save">Speichern (Slot %1$d)</string>
+    <string name="questMenu_load">Laden (Slot %1$d)</string>
+    <string name="questMenu_slot">Slot:  ◀ %1$d ▶</string>
+    <string name="questMenu_passthrough">Passthrough: %1$s</string>
+    <string name="questMenu_controller">Controller-Anzeige:  ◀ %1$s ▶</string>
+    <string name="questMenu_controllerHands">N64 an den Händen</string>
+    <string name="questMenu_controllerScreen">N64 unter dem Bild</string>
+    <string name="questMenu_controllerOff">Aus</string>
+    <string name="questMenu_speed">Geschwindigkeit: %1$d %%</string>
+    <string name="questMenu_frameLimiter">Frame-Limiter: %1$s</string>
+    <string name="questMenu_screenshot">Screenshot</string>
+    <string name="questMenu_screenshotSaved">Screenshot gespeichert</string>
+    <string name="questMenu_resetScreen">Bildposition zurücksetzen</string>
+    <string name="questMenu_reset">Spiel zurücksetzen</string>
+    <string name="questMenu_resetConfirm">Zurücksetzen? A zum Bestätigen</string>
+    <string name="questMenu_exit">Spiel beenden</string>
+    <string name="questMenu_exitConfirm">Beenden? A zum Bestätigen</string>
+    <string name="questMenu_on">An</string>
+    <string name="questMenu_off">Aus</string>
+    <string name="questMenu_hintNavigate">Stick: Auswahl   ◀▶: ändern   A: OK   B: zurück</string>
+    <string name="questMenu_hintGrab">Grip halten: Bild verschieben   Stick dabei: Größe</string>
+</resources>

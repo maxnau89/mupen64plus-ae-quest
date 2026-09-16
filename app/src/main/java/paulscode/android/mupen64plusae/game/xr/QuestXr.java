@@ -9,7 +9,8 @@ import android.view.Surface;
 /**
  * Thin wrapper around the native OpenXR session (quest-xr module).
  * <p>
- * The session shows quad layers for the game and the VR menu, optionally over passthrough.
+ * The session shows quad layers for the game, the VR menu and a virtual N64 controller,
+ * optionally over passthrough.
  * Each quad gets a Surface backed by a SurfaceTexture; the native frame thread copies whatever
  * is drawn into it into an OpenXR swapchain.
  */
@@ -39,7 +40,16 @@ public class QuestXr
     // Quad ids, must match quest_xr.cpp
     public static final int QUAD_GAME = 0;
     public static final int QUAD_MENU = 1;
-    private static final int QUAD_COUNT = 2;
+    public static final int QUAD_CONTROLLER = 2;
+    private static final int QUAD_COUNT = 3;
+
+    // Quad attach modes, must match quest_xr.cpp
+    /** Position and yaw in the tracking space */
+    public static final int ATTACH_WORLD = 0;
+    /** Position and yaw relative to the game quad */
+    public static final int ATTACH_GAME = 1;
+    /** Between the controllers, raised by the y offset, facing the head */
+    public static final int ATTACH_HANDS = 2;
 
     /** Callbacks are invoked on the XR frame thread. */
     public interface Listener
@@ -48,6 +58,9 @@ public class QuestXr
                        float leftTrigger, float rightTrigger, float leftGrip, float rightGrip, int buttons);
 
         void onXrSessionState(int state);
+
+        /** The game screen was grabbed and released at a new pose. */
+        void onXrScreenMoved(float x, float y, float z, float yaw, float width);
     }
 
     private static boolean sLibraryLoaded = false;
@@ -73,20 +86,21 @@ public class QuestXr
     }
 
     /**
-     * Create the XR session with a game and a menu quad of the given pixel sizes.
+     * Create the XR session with game, menu and controller quads of the given pixel sizes.
      * @return False if XR is unavailable
      */
     public static boolean create(Activity activity, Listener listener, int gameWidth, int gameHeight,
-                                 int menuWidth, int menuHeight)
+                                 int menuWidth, int menuHeight, int controllerWidth, int controllerHeight)
     {
         if (!isQuestDevice() || !loadLibrary()) {
             return false;
         }
-        if (!nativeCreate(activity, listener, gameWidth, gameHeight, menuWidth, menuHeight)) {
+        if (!nativeCreate(activity, listener, gameWidth, gameHeight, menuWidth, menuHeight,
+                controllerWidth, controllerHeight)) {
             return false;
         }
 
-        final int[][] sizes = {{gameWidth, gameHeight}, {menuWidth, menuHeight}};
+        final int[][] sizes = {{gameWidth, gameHeight}, {menuWidth, menuHeight}, {controllerWidth, controllerHeight}};
         for (int quad = 0; quad < QUAD_COUNT; ++quad) {
             // Created detached; the native frame thread attaches it to its own GL context
             sTextures[quad] = new SurfaceTexture(false);
@@ -128,16 +142,25 @@ public class QuestXr
     }
 
     /**
-     * Place a quad straight ahead of the initial head position.
-     * @param width Width in meters, the height follows the pixel aspect ratio
-     * @param distance Distance in meters
-     * @param offsetY Vertical offset in meters
+     * Place a quad. The height follows the pixel aspect ratio.
+     * @param attach One of the ATTACH_ constants, defines what x/y/z and yaw are relative to
+     * @param yaw Rotation around the vertical axis in radians, 0 faces the initial head position
+     * @param width Width in meters
      * @param blendAlpha Whether the quad's alpha channel is used for blending
      */
-    public static void setQuad(int quad, boolean visible, float width, float distance, float offsetY, boolean blendAlpha)
+    public static void setQuad(int quad, boolean visible, int attach, float x, float y, float z, float yaw,
+                               float width, boolean blendAlpha)
     {
         if (sLibraryLoaded) {
-            nativeSetQuad(quad, visible, width, distance, offsetY, blendAlpha);
+            nativeSetQuad(quad, visible, attach, x, y, z, yaw, width, blendAlpha);
+        }
+    }
+
+    /** While enabled, holding a grip moves the game screen with that controller. */
+    public static void setGrabEnabled(boolean enabled)
+    {
+        if (sLibraryLoaded) {
+            nativeSetGrabEnabled(enabled);
         }
     }
 
@@ -148,10 +171,12 @@ public class QuestXr
     }
 
     private static native boolean nativeCreate(Activity activity, Listener listener, int gameWidth, int gameHeight,
-                                               int menuWidth, int menuHeight);
+                                               int menuWidth, int menuHeight, int controllerWidth,
+                                               int controllerHeight);
     private static native void nativeSetSourceTexture(int quad, SurfaceTexture texture);
-    private static native void nativeSetQuad(int quad, boolean visible, float width, float distance, float offsetY,
-                                             boolean blendAlpha);
+    private static native void nativeSetQuad(int quad, boolean visible, int attach, float x, float y, float z,
+                                             float yaw, float width, boolean blendAlpha);
+    private static native void nativeSetGrabEnabled(boolean enabled);
     private static native boolean nativeSetPassthrough(boolean enabled);
     private static native void nativeStart();
     private static native void nativeDestroy();

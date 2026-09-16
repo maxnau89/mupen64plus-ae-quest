@@ -1,5 +1,6 @@
 package paulscode.android.mupen64plusae.game.xr;
 
+import android.content.res.Resources;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -11,8 +12,8 @@ import android.view.Surface;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Locale;
 
+import paulscode.android.mupen64plusae.R;
 import paulscode.android.mupen64plusae.jni.CoreFragment;
 
 /**
@@ -26,12 +27,6 @@ public class QuestVrMenu
 {
     private static final String TAG = "QuestVrMenu";
 
-    public static final float MIN_SCREEN_SIZE = 0.8f;
-    public static final float MAX_SCREEN_SIZE = 6.0f;
-    public static final float MIN_SCREEN_DISTANCE = 0.8f;
-    public static final float MAX_SCREEN_DISTANCE = 6.0f;
-    private static final float SCREEN_STEP = 0.1f;
-
     public interface Host
     {
         void onVrMenuClosed();
@@ -40,28 +35,30 @@ public class QuestVrMenu
 
         void onVrMenuScreenshot();
 
+        void onVrMenuResetScreen();
+
         boolean isPassthroughSupported();
 
         boolean isPassthroughEnabled();
 
         void setPassthroughEnabled(boolean enabled);
 
-        float getScreenSize();
+        /** One of the QuestN64Overlay.MODE_ constants */
+        int getControllerMode();
 
-        float getScreenDistance();
-
-        void setScreenGeometry(float size, float distance);
+        void setControllerMode(int mode);
     }
 
     private enum Item
     {
-        RESUME, SAVE, LOAD, SLOT, SCREEN_SIZE, SCREEN_DISTANCE, PASSTHROUGH, SPEED, FRAME_LIMITER,
-        SCREENSHOT, RESET, EXIT
+        RESUME, SAVE, LOAD, SLOT, PASSTHROUGH, CONTROLLER, SPEED, FRAME_LIMITER, SCREENSHOT, RESET_SCREEN,
+        RESET, EXIT
     }
 
     private final Surface mSurface;
     private final int mWidth;
     private final int mHeight;
+    private final Resources mResources;
     private final CoreFragment mCoreFragment;
     private final Host mHost;
     private final String mTitle;
@@ -78,11 +75,13 @@ public class QuestVrMenu
     private final Paint mTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mHintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-    public QuestVrMenu(Surface surface, int width, int height, CoreFragment coreFragment, Host host, String title)
+    public QuestVrMenu(Surface surface, int width, int height, Resources resources, CoreFragment coreFragment,
+                       Host host, String title)
     {
         mSurface = surface;
         mWidth = width;
         mHeight = height;
+        mResources = resources;
         mCoreFragment = coreFragment;
         mHost = host;
         mTitle = title != null ? title : "";
@@ -136,32 +135,28 @@ public class QuestVrMenu
 
     public void adjust(int direction)
     {
-        final Item item = mItems.get(mSelected);
-        switch (item) {
+        switch (mItems.get(mSelected)) {
             case SLOT:
                 if (direction > 0) {
                     mCoreFragment.incrementSlot();
                 } else {
                     mCoreFragment.decrementSlot();
                 }
+                draw();
                 break;
-            case SCREEN_SIZE:
-                mHost.setScreenGeometry(clamp(mHost.getScreenSize() + direction * SCREEN_STEP,
-                        MIN_SCREEN_SIZE, MAX_SCREEN_SIZE), mHost.getScreenDistance());
-                break;
-            case SCREEN_DISTANCE:
-                mHost.setScreenGeometry(mHost.getScreenSize(), clamp(mHost.getScreenDistance() + direction * SCREEN_STEP,
-                        MIN_SCREEN_DISTANCE, MAX_SCREEN_DISTANCE));
+            case CONTROLLER:
+                mHost.setControllerMode((mHost.getControllerMode() + direction + QuestN64Overlay.MODE_COUNT)
+                        % QuestN64Overlay.MODE_COUNT);
+                draw();
                 break;
             case PASSTHROUGH:
             case SPEED:
             case FRAME_LIMITER:
                 activate();
-                return;
+                break;
             default:
-                return;
+                break;
         }
-        draw();
     }
 
     public void activate()
@@ -187,6 +182,9 @@ public class QuestVrMenu
             case PASSTHROUGH:
                 mHost.setPassthroughEnabled(!mHost.isPassthroughEnabled());
                 break;
+            case CONTROLLER:
+                mHost.setControllerMode((mHost.getControllerMode() + 1) % QuestN64Overlay.MODE_COUNT);
+                break;
             case SPEED:
                 mCoreFragment.toggleSpeed();
                 break;
@@ -195,7 +193,10 @@ public class QuestVrMenu
                 break;
             case SCREENSHOT:
                 mHost.onVrMenuScreenshot();
-                mStatus = "Screenshot gespeichert";
+                mStatus = mResources.getString(R.string.questMenu_screenshotSaved);
+                break;
+            case RESET_SCREEN:
+                mHost.onVrMenuResetScreen();
                 break;
             case RESET:
             case EXIT:
@@ -229,33 +230,50 @@ public class QuestVrMenu
         }
     }
 
+    private String onOff(boolean on)
+    {
+        return mResources.getString(on ? R.string.questMenu_on : R.string.questMenu_off);
+    }
+
+    private String controllerModeLabel(int mode)
+    {
+        switch (mode) {
+            case QuestN64Overlay.MODE_HANDS:
+                return mResources.getString(R.string.questMenu_controllerHands);
+            case QuestN64Overlay.MODE_SCREEN:
+                return mResources.getString(R.string.questMenu_controllerScreen);
+            default:
+                return mResources.getString(R.string.questMenu_controllerOff);
+        }
+    }
+
     private String label(Item item)
     {
         switch (item) {
             case RESUME:
-                return "Weiterspielen";
+                return mResources.getString(R.string.questMenu_resume);
             case SAVE:
-                return String.format(Locale.GERMANY, "Speichern (Slot %d)", mCoreFragment.getSlot());
+                return mResources.getString(R.string.questMenu_save, mCoreFragment.getSlot());
             case LOAD:
-                return String.format(Locale.GERMANY, "Laden (Slot %d)", mCoreFragment.getSlot());
+                return mResources.getString(R.string.questMenu_load, mCoreFragment.getSlot());
             case SLOT:
-                return String.format(Locale.GERMANY, "Slot:  ◀ %d ▶", mCoreFragment.getSlot());
-            case SCREEN_SIZE:
-                return String.format(Locale.GERMANY, "Bildgröße:  ◀ %.1f m ▶", mHost.getScreenSize());
-            case SCREEN_DISTANCE:
-                return String.format(Locale.GERMANY, "Abstand:  ◀ %.1f m ▶", mHost.getScreenDistance());
+                return mResources.getString(R.string.questMenu_slot, mCoreFragment.getSlot());
             case PASSTHROUGH:
-                return "Passthrough: " + (mHost.isPassthroughEnabled() ? "An" : "Aus");
+                return mResources.getString(R.string.questMenu_passthrough, onOff(mHost.isPassthroughEnabled()));
+            case CONTROLLER:
+                return mResources.getString(R.string.questMenu_controller, controllerModeLabel(mHost.getControllerMode()));
             case SPEED:
-                return String.format(Locale.GERMANY, "Geschwindigkeit: %d %%", mCoreFragment.getCurrentSpeed());
+                return mResources.getString(R.string.questMenu_speed, mCoreFragment.getCurrentSpeed());
             case FRAME_LIMITER:
-                return "Frame-Limiter: " + (mCoreFragment.getFramelimiter() ? "An" : "Aus");
+                return mResources.getString(R.string.questMenu_frameLimiter, onOff(mCoreFragment.getFramelimiter()));
             case SCREENSHOT:
-                return "Screenshot";
+                return mResources.getString(R.string.questMenu_screenshot);
+            case RESET_SCREEN:
+                return mResources.getString(R.string.questMenu_resetScreen);
             case RESET:
-                return mPendingConfirm == item ? "Zurücksetzen? A zum Bestätigen" : "Spiel zurücksetzen";
+                return mResources.getString(mPendingConfirm == item ? R.string.questMenu_resetConfirm : R.string.questMenu_reset);
             case EXIT:
-                return mPendingConfirm == item ? "Beenden? A zum Bestätigen" : "Spiel beenden";
+                return mResources.getString(mPendingConfirm == item ? R.string.questMenu_exitConfirm : R.string.questMenu_exit);
             default:
                 return item.name();
         }
@@ -291,13 +309,15 @@ public class QuestVrMenu
                     canvas.drawRoundRect(new RectF(padding - 16, top, mWidth - padding + 16, top + rowHeight - 8),
                             18, 18, mHighlightPaint);
                 }
-                canvas.drawText(label(mItems.get(i)), padding, top + rowHeight - 30, mTextPaint);
+                canvas.drawText(ellipsize(label(mItems.get(i)), mTextPaint, mWidth - 2 * padding),
+                        padding, top + rowHeight - 30, mTextPaint);
             }
 
-            float footer = mHeight - padding;
-            canvas.drawText("Stick: Auswahl   ◀▶: ändern   A: OK   B: zurück", padding, footer, mHintPaint);
+            final float footer = mHeight - padding;
+            canvas.drawText(mResources.getString(R.string.questMenu_hintNavigate), padding, footer, mHintPaint);
+            canvas.drawText(mResources.getString(R.string.questMenu_hintGrab), padding, footer - 44, mHintPaint);
             if (!mStatus.isEmpty()) {
-                canvas.drawText(mStatus, padding, footer - 44, mHintPaint);
+                canvas.drawText(mStatus, padding, footer - 88, mHintPaint);
             }
         } finally {
             mSurface.unlockCanvasAndPost(canvas);
@@ -311,10 +331,5 @@ public class QuestVrMenu
         }
         final int count = paint.breakText(text, true, maxWidth - paint.measureText("…"), null);
         return text.substring(0, count) + "…";
-    }
-
-    private static float clamp(float value, float min, float max)
-    {
-        return Math.max(min, Math.min(max, value));
     }
 }

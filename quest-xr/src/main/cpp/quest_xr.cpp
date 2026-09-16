@@ -16,7 +16,9 @@
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
+#include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstring>
 #include <mutex>
 #include <thread>
@@ -44,13 +46,24 @@ enum Buttons {
 enum QuadId {
     QUAD_GAME = 0,
     QUAD_MENU = 1,
+    QUAD_CONTROLLER = 2,
     QUAD_COUNT
 };
+
+// How a quad's pose is interpreted, must match QuestXr.java
+enum Attach {
+    ATTACH_WORLD = 0,  // position and yaw in the LOCAL space
+    ATTACH_GAME = 1,   // position and yaw relative to the game quad
+    ATTACH_HANDS = 2,  // between the controllers, offset upwards by position.y, facing the head
+};
+
+enum Hand { HAND_LEFT = 0, HAND_RIGHT = 1, HAND_COUNT };
 
 enum ActionId {
     ACT_LSTICK, ACT_RSTICK,
     ACT_LTRIGGER, ACT_RTRIGGER, ACT_LGRIP, ACT_RGRIP,
     ACT_A, ACT_B, ACT_X, ACT_Y, ACT_MENU, ACT_LSTICK_CLICK, ACT_RSTICK_CLICK,
+    ACT_LPOSE, ACT_RPOSE,
     ACT_COUNT
 };
 
@@ -74,14 +87,24 @@ const ActionDef kActions[ACT_COUNT] = {
     {"button_menu", XR_ACTION_TYPE_BOOLEAN_INPUT, "/user/hand/left/input/menu/click"},
     {"left_stick_click", XR_ACTION_TYPE_BOOLEAN_INPUT, "/user/hand/left/input/thumbstick/click"},
     {"right_stick_click", XR_ACTION_TYPE_BOOLEAN_INPUT, "/user/hand/right/input/thumbstick/click"},
+    {"left_pose", XR_ACTION_TYPE_POSE_INPUT, "/user/hand/left/input/grip/pose"},
+    {"right_pose", XR_ACTION_TYPE_POSE_INPUT, "/user/hand/right/input/grip/pose"},
 };
 
 struct QuadSettings {
     bool visible = false;
-    float width = 2.0f;     // meters
-    float distance = 2.0f;  // meters in front of the LOCAL space origin
-    float offsetY = 0.0f;   // meters
+    int attach = ATTACH_WORLD;
+    XrVector3f position = {0.0f, 0.0f, -2.0f};
+    float yaw = 0.0f;     // radians around +Y
+    float width = 2.0f;   // meters
     bool blendAlpha = false;
+};
+
+struct InputState {
+    XrVector2f sticks[HAND_COUNT] = {};
+    float triggers[HAND_COUNT] = {};
+    float grips[HAND_COUNT] = {};
+    int buttons = 0;
 };
 
 struct Quad {
@@ -126,6 +149,15 @@ struct XrState {
     XrSpace space = XR_NULL_HANDLE;
     XrActionSet actionSet = XR_NULL_HANDLE;
     XrAction actions[ACT_COUNT] = {};
+    XrSpace handSpaces[HAND_COUNT] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
+    XrSpace viewSpace = XR_NULL_HANDLE;
+    jmethodID onScreenMoved = nullptr;
+
+    InputState input;
+    // Grabbing the game screen with a grip, only while grabbing is enabled (VR menu open)
+    std::atomic<bool> grabEnabled{false};
+    int grabHand = -1;
+    XrVector3f grabOffset = {};
 
     std::mutex quadMutex;
     Quad quads[QUAD_COUNT];
@@ -263,7 +295,20 @@ bool createActions(XrState& xr) {
     XrSessionActionSetsAttachInfo attach{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
     attach.countActionSets = 1;
     attach.actionSets = &xr.actionSet;
-    return check(xrAttachSessionActionSets(xr.session, &attach), "xrAttachSessionActionSets");
+    if (!check(xrAttachSessionActionSets(xr.session, &attach), "xrAttachSessionActionSets")) {
+        return false;
+    }
+
+    const ActionId poseActions[HAND_COUNT] = {ACT_LPOSE, ACT_RPOSE};
+    for (int hand = 0; hand < HAND_COUNT; ++hand) {
+        XrActionSpaceCreateInfo spaceInfo{XR_TYPE_ACTION_SPACE_CREATE_INFO};
+        spaceInfo.action = xr.actions[poseActions[hand]];
+        spaceInfo.poseInActionSpace = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+        if (!check(xrCreateActionSpace(xr.session, &spaceInfo, &xr.handSpaces[hand]), "xrCreateActionSpace")) {
+            return false;
+        }
+    }
+    return true;
 }
 
 void destroyXr(JNIEnv* env, XrState* xr) {
@@ -273,6 +318,10 @@ void destroyXr(JNIEnv* env, XrState* xr) {
     }
     if (xr->passthroughLayer != XR_NULL_HANDLE) xr->passthroughFns.destroyLayer(xr->passthroughLayer);
     if (xr->passthrough != XR_NULL_HANDLE) xr->passthroughFns.destroy(xr->passthrough);
+    for (XrSpace handSpace : xr->handSpaces) {
+        if (handSpace != XR_NULL_HANDLE) xrDestroySpace(handSpace);
+    }
+    if (xr->viewSpace != XR_NULL_HANDLE) xrDestroySpace(xr->viewSpace);
     if (xr->space != XR_NULL_HANDLE) xrDestroySpace(xr->space);
     if (xr->actionSet != XR_NULL_HANDLE) xrDestroyActionSet(xr->actionSet);
     if (xr->session != XR_NULL_HANDLE) xrDestroySession(xr->session);
@@ -371,8 +420,13 @@ void syncInput(JNIEnv* env, XrState& xr) {
         return;
     }
 
-    XrVector2f left = getVector2(xr, ACT_LSTICK);
-    XrVector2f right = getVector2(xr, ACT_RSTICK);
+    InputState& input = xr.input;
+    input.sticks[HAND_LEFT] = getVector2(xr, ACT_LSTICK);
+    input.sticks[HAND_RIGHT] = getVector2(xr, ACT_RSTICK);
+    input.triggers[HAND_LEFT] = getFloat(xr, ACT_LTRIGGER);
+    input.triggers[HAND_RIGHT] = getFloat(xr, ACT_RTRIGGER);
+    input.grips[HAND_LEFT] = getFloat(xr, ACT_LGRIP);
+    input.grips[HAND_RIGHT] = getFloat(xr, ACT_RGRIP);
 
     jint buttons = 0;
     if (getBool(xr, ACT_A)) buttons |= BTN_A;
@@ -382,11 +436,13 @@ void syncInput(JNIEnv* env, XrState& xr) {
     if (getBool(xr, ACT_MENU)) buttons |= BTN_MENU;
     if (getBool(xr, ACT_LSTICK_CLICK)) buttons |= BTN_LSTICK;
     if (getBool(xr, ACT_RSTICK_CLICK)) buttons |= BTN_RSTICK;
+    input.buttons = buttons;
 
     env->CallVoidMethod(xr.listener, xr.onInput,
-                        left.x, left.y, right.x, right.y,
-                        getFloat(xr, ACT_LTRIGGER), getFloat(xr, ACT_RTRIGGER),
-                        getFloat(xr, ACT_LGRIP), getFloat(xr, ACT_RGRIP),
+                        input.sticks[HAND_LEFT].x, input.sticks[HAND_LEFT].y,
+                        input.sticks[HAND_RIGHT].x, input.sticks[HAND_RIGHT].y,
+                        input.triggers[HAND_LEFT], input.triggers[HAND_RIGHT],
+                        input.grips[HAND_LEFT], input.grips[HAND_RIGHT],
                         buttons);
     clearException(env, "onXrInput");
 }
@@ -600,6 +656,144 @@ void copyQuad(JNIEnv* env, XrState& xr, Quad& quad) {
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Poses
+
+bool locate(XrState& xr, XrSpace space, XrTime time, XrPosef& pose) {
+    XrSpaceLocation location{XR_TYPE_SPACE_LOCATION};
+    if (space == XR_NULL_HANDLE || XR_FAILED(xrLocateSpace(space, xr.space, time, &location))) {
+        return false;
+    }
+    const XrSpaceLocationFlags required = XR_SPACE_LOCATION_POSITION_VALID_BIT | XR_SPACE_LOCATION_ORIENTATION_VALID_BIT;
+    if ((location.locationFlags & required) != required) {
+        return false;
+    }
+    pose = location.pose;
+    return true;
+}
+
+XrVector3f add(const XrVector3f& a, const XrVector3f& b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
+XrVector3f sub(const XrVector3f& a, const XrVector3f& b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
+
+// Rotates v around +Y by yaw
+XrVector3f rotateYaw(const XrVector3f& v, float yaw) {
+    const float c = std::cos(yaw);
+    const float s = std::sin(yaw);
+    return {c * v.x + s * v.z, v.y, -s * v.x + c * v.z};
+}
+
+// Yaw that turns a quad at `from` (normal +Z) towards `to`
+float yawTowards(const XrVector3f& from, const XrVector3f& to) {
+    const XrVector3f d = sub(to, from);
+    return std::atan2(d.x, d.z);
+}
+
+// Pitch (around local X, after yaw) that tilts a quad's normal towards `to`
+float pitchTowards(const XrVector3f& from, const XrVector3f& to) {
+    const XrVector3f d = sub(to, from);
+    return -std::atan2(d.y, std::sqrt(d.x * d.x + d.z * d.z));
+}
+
+XrQuaternionf yawPitchQuaternion(float yaw, float pitch) {
+    const float cy = std::cos(yaw * 0.5f), sy = std::sin(yaw * 0.5f);
+    const float cp = std::cos(pitch * 0.5f), sp = std::sin(pitch * 0.5f);
+    // q = qYaw(Y) * qPitch(X)
+    return {cy * sp, sy * cp, -sy * sp, cy * cp};
+}
+
+// Moves the game screen with the grabbing controller; the stick of that hand scales it.
+// Called on the frame thread after input was synced.
+void updateGrab(JNIEnv* env, XrState& xr, XrTime time, XrDuration period, const XrPosef* hands[HAND_COUNT],
+                const XrPosef* head) {
+    const bool enabled = xr.grabEnabled && xr.sessionState == XR_SESSION_STATE_FOCUSED;
+
+    if (xr.grabHand >= 0) {
+        const int hand = xr.grabHand;
+        QuadSettings released;
+        bool finished = false;
+        {
+            std::lock_guard<std::mutex> lock(xr.quadMutex);
+            QuadSettings& screen = xr.quads[QUAD_GAME].settings;
+            if (!enabled || xr.input.grips[hand] < 0.5f || hands[hand] == nullptr) {
+                finished = true;
+                released = screen;
+                xr.grabHand = -1;
+            } else {
+                screen.position = add(hands[hand]->position, xr.grabOffset);
+                if (head != nullptr) {
+                    screen.yaw = yawTowards(screen.position, head->position);
+                }
+                const float stick = xr.input.sticks[hand].y;
+                if (std::fabs(stick) > 0.2f) {
+                    const float seconds = static_cast<float>(period) * 1e-9f;
+                    screen.width = std::min(8.0f, std::max(0.5f, screen.width * std::exp(stick * seconds * 1.2f)));
+                }
+            }
+        }
+        if (finished) {
+            LOGI("Screen released at %.2f %.2f %.2f yaw %.2f width %.2f", released.position.x, released.position.y,
+                 released.position.z, released.yaw, released.width);
+            env->CallVoidMethod(xr.listener, xr.onScreenMoved, released.position.x, released.position.y,
+                                released.position.z, released.yaw, released.width);
+            clearException(env, "onXrScreenMoved");
+        }
+        return;
+    }
+
+    if (!enabled) {
+        return;
+    }
+    for (int hand = 0; hand < HAND_COUNT; ++hand) {
+        if (xr.input.grips[hand] > 0.7f && hands[hand] != nullptr) {
+            std::lock_guard<std::mutex> lock(xr.quadMutex);
+            xr.grabHand = hand;
+            xr.grabOffset = sub(xr.quads[QUAD_GAME].settings.position, hands[hand]->position);
+            LOGI("Screen grabbed with hand %d", hand);
+            return;
+        }
+    }
+}
+
+// Computes the pose of a quad in the LOCAL space. Returns false if it can't be placed.
+bool quadPose(const QuadSettings& settings, const QuadSettings& game, const XrPosef* hands[HAND_COUNT],
+              const XrPosef* head, XrPosef& pose) {
+    switch (settings.attach) {
+        case ATTACH_GAME: {
+            const float yaw = game.yaw + settings.yaw;
+            pose.position = add(game.position, rotateYaw(settings.position, game.yaw));
+            pose.orientation = yawPitchQuaternion(yaw, 0.0f);
+            return true;
+        }
+        case ATTACH_HANDS: {
+            XrVector3f center;
+            if (hands[HAND_LEFT] != nullptr && hands[HAND_RIGHT] != nullptr) {
+                const XrVector3f& l = hands[HAND_LEFT]->position;
+                const XrVector3f& r = hands[HAND_RIGHT]->position;
+                center = {(l.x + r.x) * 0.5f, (l.y + r.y) * 0.5f, (l.z + r.z) * 0.5f};
+            } else if (hands[HAND_LEFT] != nullptr) {
+                center = hands[HAND_LEFT]->position;
+            } else if (hands[HAND_RIGHT] != nullptr) {
+                center = hands[HAND_RIGHT]->position;
+            } else {
+                return false;
+            }
+            pose.position = add(center, settings.position);
+            if (head != nullptr) {
+                pose.orientation = yawPitchQuaternion(yawTowards(pose.position, head->position),
+                                                      pitchTowards(pose.position, head->position));
+            } else {
+                pose.orientation = {0.0f, 0.0f, 0.0f, 1.0f};
+            }
+            return true;
+        }
+        case ATTACH_WORLD:
+        default:
+            pose.position = settings.position;
+            pose.orientation = yawPitchQuaternion(settings.yaw, 0.0f);
+            return true;
+    }
+}
+
 void renderFrame(XrState& xr, JNIEnv* env) {
     XrFrameWaitInfo waitInfo{XR_TYPE_FRAME_WAIT_INFO};
     XrFrameState frameState{XR_TYPE_FRAME_STATE};
@@ -617,6 +811,18 @@ void renderFrame(XrState& xr, JNIEnv* env) {
         syncInput(env, xr);
     }
     updatePassthrough(xr);
+
+    const XrTime time = frameState.predictedDisplayTime;
+    XrPosef handPoses[HAND_COUNT];
+    const XrPosef* hands[HAND_COUNT] = {nullptr, nullptr};
+    for (int hand = 0; hand < HAND_COUNT; ++hand) {
+        if (locate(xr, xr.handSpaces[hand], time, handPoses[hand])) {
+            hands[hand] = &handPoses[hand];
+        }
+    }
+    XrPosef headPose;
+    const XrPosef* head = locate(xr, xr.viewSpace, time, headPose) ? &headPose : nullptr;
+    updateGrab(env, xr, time, frameState.predictedDisplayPeriod, hands, head);
 
     QuadSettings settings[QUAD_COUNT];
     {
@@ -661,7 +867,9 @@ void renderFrame(XrState& xr, JNIEnv* env) {
             layer.subImage.swapchain = quad.swapchain;
             layer.subImage.imageRect = {{0, 0}, {quad.width, quad.height}};
             layer.subImage.imageArrayIndex = 0;
-            layer.pose = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, settings[i].offsetY, -settings[i].distance}};
+            if (!quadPose(settings[i], settings[QUAD_GAME], hands, head, layer.pose)) {
+                continue;
+            }
             layer.size = {settings[i].width,
                           settings[i].width * static_cast<float>(quad.height) / static_cast<float>(quad.width)};
             layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer);
@@ -774,7 +982,8 @@ bool createQuadSwapchain(XrState& xr, Quad& quad, int32_t width, int32_t height)
 
 // Creates instance, session, input actions, passthrough and the quad swapchains.
 // Leaves the XR EGL context current on the calling thread once initEgl() ran.
-bool createXrSession(XrState& xr, jint gameWidth, jint gameHeight, jint menuWidth, jint menuHeight) {
+bool createXrSession(XrState& xr, jint gameWidth, jint gameHeight, jint menuWidth, jint menuHeight,
+                     jint controllerWidth, jint controllerHeight) {
     if (!gLoaderInitialized) {
         PFN_xrInitializeLoaderKHR initializeLoader = nullptr;
         if (!getProc(XR_NULL_HANDLE, "xrInitializeLoaderKHR", initializeLoader)) {
@@ -860,6 +1069,10 @@ bool createXrSession(XrState& xr, jint gameWidth, jint gameHeight, jint menuWidt
     if (!check(xrCreateReferenceSpace(xr.session, &spaceInfo, &xr.space), "xrCreateReferenceSpace")) {
         return false;
     }
+    spaceInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
+    if (!check(xrCreateReferenceSpace(xr.session, &spaceInfo, &xr.viewSpace), "xrCreateReferenceSpace(VIEW)")) {
+        return false;
+    }
 
     if (!createActions(xr)) {
         return false;
@@ -871,7 +1084,8 @@ bool createXrSession(XrState& xr, jint gameWidth, jint gameHeight, jint menuWidt
 
     return chooseSwapchainFormat(xr) &&
            createQuadSwapchain(xr, xr.quads[QUAD_GAME], gameWidth, gameHeight) &&
-           createQuadSwapchain(xr, xr.quads[QUAD_MENU], menuWidth, menuHeight);
+           createQuadSwapchain(xr, xr.quads[QUAD_MENU], menuWidth, menuHeight) &&
+           createQuadSwapchain(xr, xr.quads[QUAD_CONTROLLER], controllerWidth, controllerHeight);
 }
 
 }  // namespace
@@ -887,7 +1101,8 @@ JNIEXPORT jboolean JNICALL
 Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, jclass,
                                                                   jobject activity, jobject listener,
                                                                   jint gameWidth, jint gameHeight,
-                                                                  jint menuWidth, jint menuHeight) {
+                                                                  jint menuWidth, jint menuHeight,
+                                                                  jint controllerWidth, jint controllerHeight) {
     if (gXr != nullptr) {
         LOGE("XR already created");
         return JNI_FALSE;
@@ -899,14 +1114,16 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, j
     jclass listenerClass = env->GetObjectClass(listener);
     xr->onInput = env->GetMethodID(listenerClass, "onXrInput", "(FFFFFFFFI)V");
     xr->onSessionState = env->GetMethodID(listenerClass, "onXrSessionState", "(I)V");
-    if (xr->onInput == nullptr || xr->onSessionState == nullptr) {
+    xr->onScreenMoved = env->GetMethodID(listenerClass, "onXrScreenMoved", "(FFFFF)V");
+    if (xr->onInput == nullptr || xr->onSessionState == nullptr || xr->onScreenMoved == nullptr) {
         env->ExceptionClear();
         LOGE("Listener is missing callback methods");
         destroyXr(env, xr);
         return JNI_FALSE;
     }
 
-    const bool created = createXrSession(*xr, gameWidth, gameHeight, menuWidth, menuHeight);
+    const bool created = createXrSession(*xr, gameWidth, gameHeight, menuWidth, menuHeight,
+                                         controllerWidth, controllerHeight);
     // The frame thread makes the context current again
     if (xr->eglDisplay != EGL_NO_DISPLAY) {
         eglMakeCurrent(xr->eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -931,18 +1148,29 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetSourceTexture(JNIE
 
 JNIEXPORT void JNICALL
 Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetQuad(JNIEnv*, jclass, jint quad, jboolean visible,
-                                                                   jfloat width, jfloat distance, jfloat offsetY,
-                                                                   jboolean blendAlpha) {
+                                                                   jint attach, jfloat x, jfloat y, jfloat z,
+                                                                   jfloat yaw, jfloat width, jboolean blendAlpha) {
     if (gXr == nullptr || quad < 0 || quad >= QUAD_COUNT) {
         return;
     }
     std::lock_guard<std::mutex> lock(gXr->quadMutex);
     QuadSettings& settings = gXr->quads[quad].settings;
     settings.visible = visible;
-    settings.width = width;
-    settings.distance = distance;
-    settings.offsetY = offsetY;
+    settings.attach = attach;
+    // Don't fight an active grab of the game screen
+    if (!(quad == QUAD_GAME && gXr->grabHand >= 0)) {
+        settings.position = {x, y, z};
+        settings.yaw = yaw;
+        settings.width = width;
+    }
     settings.blendAlpha = blendAlpha;
+}
+
+JNIEXPORT void JNICALL
+Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetGrabEnabled(JNIEnv*, jclass, jboolean enabled) {
+    if (gXr != nullptr) {
+        gXr->grabEnabled = enabled;
+    }
 }
 
 // Returns false if passthrough is not supported
