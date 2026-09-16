@@ -11,6 +11,7 @@
 
 #define XR_USE_PLATFORM_ANDROID
 #define XR_USE_GRAPHICS_API_OPENGL_ES
+#define XR_EXTENSION_PROTOTYPES
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
