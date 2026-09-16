@@ -524,11 +524,14 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
 
         ReloadAllMenus();
 
-        if (savedInstanceState == null && !mXrMode)
+        if (savedInstanceState == null)
         {
             // Show the drawer at the start and have it hide itself
             // automatically
-            mDrawerLayout.openDrawer(GravityCompat.START);
+            // The drawer is invisible in VR and would keep the emulator paused
+            if (!mXrMode) {
+                mDrawerLayout.openDrawer(GravityCompat.START);
+            }
         }
         else
         {
