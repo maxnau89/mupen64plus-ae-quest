@@ -11,7 +11,6 @@
 
 #define XR_USE_PLATFORM_ANDROID
 #define XR_USE_GRAPHICS_API_OPENGL_ES
-#define XR_EXTENSION_PROTOTYPES
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 
@@ -99,6 +98,18 @@ struct XrState {
 JavaVM* gVm = nullptr;
 bool gLoaderInitialized = false;
 XrState* gXr = nullptr;
+
+// The loader only exports core functions; extension functions are looked up at runtime.
+template <typename Fn>
+bool getProc(XrInstance instance, const char* name, Fn& fn) {
+    PFN_xrVoidFunction proc = nullptr;
+    if (XR_FAILED(xrGetInstanceProcAddr(instance, name, &proc)) || proc == nullptr) {
+        LOGE("xrGetInstanceProcAddr(%s) failed", name);
+        return false;
+    }
+    fn = reinterpret_cast<Fn>(proc);
+    return true;
+}
 
 bool check(XrResult result, const char* what) {
     if (XR_FAILED(result)) {
@@ -366,10 +377,14 @@ void frameLoop(XrState* xr) {
 // Returns the swapchain's android.view.Surface or nullptr.
 jobject createXr(JNIEnv* env, XrState& xr, jobject activity, jint width, jint height) {
     if (!gLoaderInitialized) {
+        PFN_xrInitializeLoaderKHR initializeLoader = nullptr;
+        if (!getProc(XR_NULL_HANDLE, "xrInitializeLoaderKHR", initializeLoader)) {
+            return nullptr;
+        }
         XrLoaderInitInfoAndroidKHR loaderInfo{XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR};
         loaderInfo.applicationVM = gVm;
         loaderInfo.applicationContext = xr.activity;
-        if (!check(xrInitializeLoaderKHR(reinterpret_cast<XrLoaderInitInfoBaseHeaderKHR*>(&loaderInfo)),
+        if (!check(initializeLoader(reinterpret_cast<XrLoaderInitInfoBaseHeaderKHR*>(&loaderInfo)),
                    "xrInitializeLoaderKHR")) {
             return nullptr;
         }
@@ -405,8 +420,15 @@ jobject createXr(JNIEnv* env, XrState& xr, jobject activity, jint width, jint he
     }
 
     // Required before xrCreateSession even though we never render through this context
+    PFN_xrGetOpenGLESGraphicsRequirementsKHR getGraphicsRequirements = nullptr;
+    PFN_xrCreateSwapchainAndroidSurfaceKHR createSurfaceSwapchain = nullptr;
+    if (!getProc(xr.instance, "xrGetOpenGLESGraphicsRequirementsKHR", getGraphicsRequirements) ||
+        !getProc(xr.instance, "xrCreateSwapchainAndroidSurfaceKHR", createSurfaceSwapchain)) {
+        return nullptr;
+    }
+
     XrGraphicsRequirementsOpenGLESKHR requirements{XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_ES_KHR};
-    if (!check(xrGetOpenGLESGraphicsRequirementsKHR(xr.instance, xr.systemId, &requirements),
+    if (!check(getGraphicsRequirements(xr.instance, xr.systemId, &requirements),
                "xrGetOpenGLESGraphicsRequirementsKHR")) {
         return nullptr;
     }
@@ -455,7 +477,7 @@ jobject createXr(JNIEnv* env, XrState& xr, jobject activity, jint width, jint he
     swapchainInfo.mipCount = 1;
 
     jobject surface = nullptr;
-    if (!check(xrCreateSwapchainAndroidSurfaceKHR(xr.session, &swapchainInfo, &xr.swapchain, &surface),
+    if (!check(createSurfaceSwapchain(xr.session, &swapchainInfo, &xr.swapchain, &surface),
                "xrCreateSwapchainAndroidSurfaceKHR") || surface == nullptr) {
         return nullptr;
     }
