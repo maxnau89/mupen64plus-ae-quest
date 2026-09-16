@@ -7,6 +7,7 @@
 // XR_KHR_android_surface_swapchain, so there is no zero-copy path.
 
 #include <jni.h>
+#include <android/bitmap.h>
 #include <android/log.h>
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
@@ -171,6 +172,7 @@ struct XrState {
     std::vector<XrSwapchainImageOpenGLESKHR> eyeImages[2];
     GLuint depthBuffer = 0;
     questxr::ControllerModel controllerModel;
+    questxr::ControllerAsset controllerAsset;  // set from Java before the frame thread starts
     bool controllerReady = false;
 
     // Screen recenter request from Java, handled on the frame thread
@@ -862,7 +864,7 @@ bool renderController(XrState& xr, XrTime time, const XrPosef* hands[HAND_COUNT]
     }
 
     if (!xr.controllerReady) {
-        if (!xr.controllerModel.init()) {
+        if (!xr.controllerModel.init(xr.controllerAsset)) {
             xr.controller3dVisible = false;
             return false;
         }
@@ -873,7 +875,9 @@ bool renderController(XrState& xr, XrTime time, const XrPosef* hands[HAND_COUNT]
                               static_cast<GLsizei>(xr.eyeConfigs[0].recommendedImageRectHeight));
         glBindRenderbuffer(GL_RENDERBUFFER, 0);
         xr.controllerReady = true;
-        LOGI("3D controller ready");
+        LOGI("3D controller ready (%s)", xr.controllerAsset.valid() ? "asset" : "procedural");
+        // The GPU has its copy now
+        xr.controllerAsset = {};
     }
 
     XrViewLocateInfo locateInfo{XR_TYPE_VIEW_LOCATE_INFO};
@@ -1401,6 +1405,50 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetGrabEnabled(JNIEnv
     if (gXr != nullptr) {
         gXr->grabEnabled = enabled;
     }
+}
+
+// Must be called before nativeStart. mesh: direct buffer with the converted model, texture: ARGB_8888 bitmap
+JNIEXPORT jboolean JNICALL
+Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetControllerModel(JNIEnv* env, jclass, jobject mesh,
+                                                                              jobject texture) {
+    if (gXr == nullptr) {
+        return JNI_FALSE;
+    }
+    const auto* data = static_cast<const uint8_t*>(env->GetDirectBufferAddress(mesh));
+    const jlong size = env->GetDirectBufferCapacity(mesh);
+    if (data == nullptr || size < 12 || memcmp(data, "N64M", 4) != 0) {
+        LOGE("Invalid controller mesh");
+        return JNI_FALSE;
+    }
+    uint32_t version = 0, vertexCount = 0;
+    memcpy(&version, data + 4, 4);
+    memcpy(&vertexCount, data + 8, 4);
+    if (version != 1 || static_cast<jlong>(12 + vertexCount * 9ull * sizeof(float)) > size) {
+        LOGE("Unsupported controller mesh version %u or size", version);
+        return JNI_FALSE;
+    }
+
+    AndroidBitmapInfo info;
+    void* pixels = nullptr;
+    if (AndroidBitmap_getInfo(env, texture, &info) != ANDROID_BITMAP_RESULT_SUCCESS ||
+        info.format != ANDROID_BITMAP_FORMAT_RGBA_8888 ||
+        AndroidBitmap_lockPixels(env, texture, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS) {
+        LOGE("Invalid controller texture");
+        return JNI_FALSE;
+    }
+
+    questxr::ControllerAsset& asset = gXr->controllerAsset;
+    asset.vertices.resize(vertexCount * 9);
+    memcpy(asset.vertices.data(), data + 12, asset.vertices.size() * sizeof(float));
+    asset.textureWidth = static_cast<int32_t>(info.width);
+    asset.textureHeight = static_cast<int32_t>(info.height);
+    asset.rgba.resize(static_cast<size_t>(info.width) * info.height * 4);
+    for (uint32_t row = 0; row < info.height; ++row) {
+        memcpy(asset.rgba.data() + row * info.width * 4, static_cast<uint8_t*>(pixels) + row * info.stride, info.width * 4);
+    }
+    AndroidBitmap_unlockPixels(env, texture);
+    LOGI("Controller model: %u vertices, texture %ux%u", vertexCount, info.width, info.height);
+    return JNI_TRUE;
 }
 
 JNIEXPORT void JNICALL

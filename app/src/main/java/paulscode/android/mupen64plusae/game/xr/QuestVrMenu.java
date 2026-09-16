@@ -74,6 +74,7 @@ public class QuestVrMenu
     private final Paint mTitlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mHintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mCreditsPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     public QuestVrMenu(Surface surface, int width, int height, Resources resources, CoreFragment coreFragment,
                        Host host, String title)
@@ -95,6 +96,8 @@ public class QuestVrMenu
         mTextPaint.setTextSize(42);
         mHintPaint.setColor(Color.argb(255, 170, 175, 185));
         mHintPaint.setTextSize(30);
+        mCreditsPaint.setColor(Color.argb(255, 120, 124, 132));
+        mCreditsPaint.setTextSize(22);
     }
 
     public boolean isOpen()
@@ -318,6 +321,10 @@ public class QuestVrMenu
             canvas.drawText(mResources.getString(R.string.questMenu_hintGrab), padding, footer - 44, mHintPaint);
             if (!mStatus.isEmpty()) {
                 canvas.drawText(mStatus, padding, footer - 88, mHintPaint);
+            }
+            if (mHost.getControllerMode() == QuestN64Overlay.MODE_HANDS) {
+                canvas.drawText(ellipsize(mResources.getString(R.string.questMenu_modelCredits), mCreditsPaint,
+                        mWidth - 2 * padding), padding, mHeight - 14, mCreditsPaint);
             }
         } finally {
             mSurface.unlockCanvasAndPost(canvas);

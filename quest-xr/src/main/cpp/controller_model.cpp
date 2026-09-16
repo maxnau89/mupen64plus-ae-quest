@@ -47,6 +47,7 @@ const float kColors[PART_COUNT][3] = {
 struct Vertex {
     float px, py, pz;
     float nx, ny, nz;
+    float u, v;
     float part;
 };
 
@@ -139,7 +140,7 @@ private:
         const float x = p.x - pivotX, z = p.z - pivotZ;
         vertices.push_back({pivotX + c * x + s * z, p.y, pivotZ - s * x + c * z,
                             c * n.x + s * n.z, n.y, -s * n.x + c * n.z,
-                            static_cast<float>(part)});
+                            0.0f, 0.0f, static_cast<float>(part)});
     }
 };
 
@@ -211,26 +212,30 @@ GLuint compile(GLenum type, const char* source) {
 
 }  // namespace
 
-bool ControllerModel::init() {
+bool ControllerModel::init(const ControllerAsset& asset) {
     static const char* kVertex = R"(#version 300 es
 layout(location = 0) in vec3 aPosition;
 layout(location = 1) in vec3 aNormal;
 layout(location = 2) in float aPart;
+layout(location = 3) in vec2 aUv;
 uniform mat4 uModel;
 uniform mat4 uViewProjection;
 uniform vec2 uStick;
+uniform vec2 uStickPivot;  // height where the knob starts to tilt, height range of the tilt
 flat out int vPart;
 out vec3 vNormal;
+out vec2 vUv;
 void main() {
     vec3 position = aPosition;
     int part = int(aPart + 0.5);
     if (part == 15) {
         // Tilt the knob: stick up moves it away from the player (-Z)
-        float lift = max(position.y - 0.0105, 0.0) / 0.015;
-        position.x += uStick.x * 0.009 * lift;
-        position.z -= uStick.y * 0.009 * lift;
+        float lift = clamp((position.y - uStickPivot.x) / uStickPivot.y, 0.0, 1.0);
+        position.x += uStick.x * 0.006 * lift;
+        position.z -= uStick.y * 0.006 * lift;
     }
     vPart = part;
+    vUv = aUv;
     vNormal = mat3(uModel) * aNormal;
     gl_Position = uViewProjection * uModel * vec4(position, 1.0);
 })";
@@ -238,18 +243,23 @@ void main() {
 precision mediump float;
 flat in int vPart;
 in vec3 vNormal;
+in vec2 vUv;
 uniform vec3 uColors[18];
 uniform float uPressed[18];
 uniform float uAlpha;
 uniform vec3 uLight;
+uniform float uTextured;
+uniform sampler2D uTexture;
 out vec4 outColor;
 void main() {
     vec3 normal = normalize(vNormal);
-    vec3 base = uColors[vPart];
-    float diffuse = max(dot(normal, uLight), 0.0);
-    vec3 color = base * (0.35 + 0.65 * diffuse);
+    vec3 base = uTextured > 0.5 ? texture(uTexture, vUv).rgb : uColors[vPart];
+    // Double sided meshes: light whichever side faces the light
+    float diffuse = abs(dot(normal, uLight));
+    vec3 color = base * (0.4 + 0.6 * diffuse);
     float pressed = uPressed[vPart];
-    color = mix(color, min(base * 1.5 + 0.45, vec3(1.0)), pressed);
+    // Pressed parts glow in their own color
+    color = mix(color, min(max(base, uColors[vPart]) * 1.5 + 0.45, vec3(1.0)), pressed);
     outColor = vec4(color, mix(uAlpha, 1.0, pressed));
 })";
 
@@ -278,8 +288,32 @@ void main() {
     pressedLocation_ = glGetUniformLocation(program_, "uPressed");
     alphaLocation_ = glGetUniformLocation(program_, "uAlpha");
     lightLocation_ = glGetUniformLocation(program_, "uLight");
+    texturedLocation_ = glGetUniformLocation(program_, "uTextured");
+    stickPivotLocation_ = glGetUniformLocation(program_, "uStickPivot");
 
-    const std::vector<Vertex> vertices = buildN64Controller();
+    std::vector<Vertex> vertices;
+    textured_ = asset.valid();
+    if (textured_) {
+        vertices.resize(asset.vertices.size() / 9);
+        for (size_t i = 0; i < vertices.size(); ++i) {
+            const float* v = &asset.vertices[i * 9];
+            // File order: position, normal, uv, part
+            vertices[i] = {v[0], v[1], v[2], v[3], v[4], v[5], v[6], v[7], v[8]};
+        }
+
+        glGenTextures(1, &texture_);
+        glBindTexture(GL_TEXTURE_2D, texture_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, asset.textureWidth, asset.textureHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+                     asset.rgba.data());
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    } else {
+        vertices = buildN64Controller();
+    }
     vertexCount_ = static_cast<GLsizei>(vertices.size());
 
     glGenVertexArrays(1, &vao_);
@@ -290,16 +324,20 @@ void main() {
                  GL_STATIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(0));
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(3 * sizeof(float)));
-    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(6 * sizeof(float)));
+    glVertexAttribPointer(3, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(6 * sizeof(float)));
+    glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, sizeof(Vertex), reinterpret_cast<void*>(8 * sizeof(float)));
     glEnableVertexAttribArray(0);
     glEnableVertexAttribArray(1);
     glEnableVertexAttribArray(2);
+    glEnableVertexAttribArray(3);
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     return true;
 }
 
 void ControllerModel::destroy() {
+    if (texture_ != 0) glDeleteTextures(1, &texture_);
+    texture_ = 0;
     if (vbo_ != 0) glDeleteBuffers(1, &vbo_);
     if (vao_ != 0) glDeleteVertexArrays(1, &vao_);
     if (program_ != 0) glDeleteProgram(program_);
@@ -334,6 +372,15 @@ void ControllerModel::draw(const float* viewProjection, const float* model, cons
     glUniform1fv(pressedLocation_, PART_COUNT, pressed);
     glUniform1f(alphaLocation_, alpha);
     glUniform3fv(lightLocation_, 1, light);
+    glUniform1f(texturedLocation_, textured_ ? 1.0f : 0.0f);
+    // Procedural knob starts at 1.05 cm, the asset's at 1.6 cm
+    if (textured_) {
+        glUniform2f(stickPivotLocation_, 0.016f, 0.008f);
+    } else {
+        glUniform2f(stickPivotLocation_, 0.0105f, 0.015f);
+    }
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture_);
     glBindVertexArray(vao_);
     glDrawArrays(GL_TRIANGLES, 0, vertexCount_);
     glBindVertexArray(0);

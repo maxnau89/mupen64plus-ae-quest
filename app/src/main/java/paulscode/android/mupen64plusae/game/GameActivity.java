@@ -569,6 +569,7 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
                 mXrPassthrough = mXrPassthroughSupported && xrPrefs.getBoolean(XR_PREF_PASSTHROUGH, false);
                 loadXrScreen();
                 updateXrQuads();
+                QuestXr.loadControllerModel(getAssets());
                 QuestXr.start();
             } else {
                 Log.w(TAG, "OpenXR unavailable, falling back to 2D");

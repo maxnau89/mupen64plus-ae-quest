@@ -1,10 +1,18 @@
 package paulscode.android.mupen64plusae.game.xr;
 
 import android.app.Activity;
+import android.content.res.AssetManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.SurfaceTexture;
 import android.os.Build;
 import android.util.Log;
 import android.view.Surface;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
 
 /**
  * Thin wrapper around the native OpenXR session (quest-xr module).
@@ -120,6 +128,41 @@ public class QuestXr
         return sSurfaces[quad];
     }
 
+    /**
+     * Load the 3D controller mesh and texture from assets. Must be called before {@link #start()};
+     * without it the 3D controller falls back to a simple procedural model.
+     */
+    public static void loadControllerModel(AssetManager assets)
+    {
+        if (!sLibraryLoaded) {
+            return;
+        }
+        try (InputStream meshStream = assets.open("quest/n64_controller.bin");
+             InputStream textureStream = assets.open("quest/n64_controller.png")) {
+            final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+            final byte[] chunk = new byte[64 * 1024];
+            int read;
+            while ((read = meshStream.read(chunk)) > 0) {
+                bytes.write(chunk, 0, read);
+            }
+            final ByteBuffer mesh = ByteBuffer.allocateDirect(bytes.size());
+            mesh.put(bytes.toByteArray());
+
+            final BitmapFactory.Options options = new BitmapFactory.Options();
+            options.inPreferredConfig = Bitmap.Config.ARGB_8888;
+            options.inPremultiplied = false;
+            final Bitmap texture = BitmapFactory.decodeStream(textureStream, null, options);
+            if (texture == null || !nativeSetControllerModel(mesh, texture)) {
+                Log.w(TAG, "Unable to use the controller model");
+            }
+            if (texture != null) {
+                texture.recycle();
+            }
+        } catch (IOException e) {
+            Log.w(TAG, "Controller model not found", e);
+        }
+    }
+
     /** Start the frame loop thread. */
     public static void start()
     {
@@ -207,6 +250,7 @@ public class QuestXr
     private static native void nativeSetQuad(int quad, boolean visible, int attach, float x, float y, float z,
                                              float yaw, float width, boolean blendAlpha);
     private static native void nativeSetGrabEnabled(boolean enabled);
+    private static native boolean nativeSetControllerModel(ByteBuffer mesh, Bitmap texture);
     private static native void nativeSetN64State(int buttons, float axisX, float axisY);
     private static native void nativeSetController3dVisible(boolean visible);
     private static native void nativeRecenterScreen(float distance, float width);

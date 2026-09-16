@@ -1,0 +1,10 @@
+n64_controller.bin, n64_controller.png
+
+This work is based on "N64 Controller"
+(https://sketchfab.com/3d-models/n64-controller-8fb694b8c4bf4bbb8bc66f38503f4ffb)
+by Marshle, formerly CodySmith1 (https://sketchfab.com/Marshle1),
+licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/).
+
+Changes: converted from glTF with tools/convert_n64_model.py (flattened scene graph, scaled to
+real size, split into per-button parts), base color texture downscaled to 1024x1024, normal and
+metallic/roughness maps not used.
