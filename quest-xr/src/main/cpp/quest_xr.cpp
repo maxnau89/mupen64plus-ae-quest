@@ -466,19 +466,51 @@ jobject createXr(JNIEnv* env, XrState& xr, jobject activity, jint width, jint he
     xr.width = width;
     xr.height = height;
 
-    XrSwapchainCreateInfo swapchainInfo{XR_TYPE_SWAPCHAIN_CREATE_INFO};
-    swapchainInfo.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
-    swapchainInfo.format = 0;  // ignored for surface swapchains
-    swapchainInfo.sampleCount = 1;
-    swapchainInfo.width = width;
-    swapchainInfo.height = height;
-    swapchainInfo.faceCount = 1;
-    swapchainInfo.arraySize = 1;
-    swapchainInfo.mipCount = 1;
+    uint32_t formatCount = 0;
+    int64_t formats[64] = {};
+    if (XR_SUCCEEDED(xrEnumerateSwapchainFormats(xr.session, 64, &formatCount, formats))) {
+        for (uint32_t i = 0; i < formatCount; ++i) {
+            LOGI("Runtime swapchain format 0x%llx", static_cast<long long>(formats[i]));
+        }
+    }
+
+    // The spec says format and usage are ignored for surface swapchains, but runtimes differ in
+    // what they validate, so try the likely combinations in order.
+    struct Variant {
+        int64_t format;
+        XrSwapchainUsageFlags usage;
+    };
+    const Variant variants[] = {
+        {0x8058 /* GL_RGBA8 */, XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT},
+        {0x8C43 /* GL_SRGB8_ALPHA8 */, XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT},
+        {0x8058, 0},
+        {0, 0},
+        {formatCount > 0 ? formats[0] : 0x8058, XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT},
+    };
 
     jobject surface = nullptr;
-    if (!check(createSurfaceSwapchain(xr.session, &swapchainInfo, &xr.swapchain, &surface),
-               "xrCreateSwapchainAndroidSurfaceKHR") || surface == nullptr) {
+    for (const Variant& variant : variants) {
+        XrSwapchainCreateInfo swapchainInfo{XR_TYPE_SWAPCHAIN_CREATE_INFO};
+        swapchainInfo.usageFlags = variant.usage;
+        swapchainInfo.format = variant.format;
+        swapchainInfo.sampleCount = 1;
+        swapchainInfo.width = width;
+        swapchainInfo.height = height;
+        swapchainInfo.faceCount = 1;
+        swapchainInfo.arraySize = 1;
+        swapchainInfo.mipCount = 1;
+
+        XrResult result = createSurfaceSwapchain(xr.session, &swapchainInfo, &xr.swapchain, &surface);
+        LOGI("Surface swapchain format=0x%llx usage=0x%llx %dx%d -> %d",
+             static_cast<long long>(variant.format), static_cast<long long>(variant.usage), width, height, result);
+        if (XR_SUCCEEDED(result) && surface != nullptr) {
+            break;
+        }
+        xr.swapchain = XR_NULL_HANDLE;
+        surface = nullptr;
+    }
+    if (surface == nullptr) {
+        LOGE("Unable to create a surface swapchain");
         return nullptr;
     }
 
