@@ -22,6 +22,8 @@
     <string name="questMenu_on">On</string>
     <string name="questMenu_off">Off</string>
     <string name="questMenu_hintNavigate">Stick: select   ◀▶: change   A: OK   B: back</string>
-    <string name="questMenu_hintGrab">Hold grip: move screen   Stick while holding: resize</string>
     <string name="questMenu_modelCredits" translatable="false">3D model: "N64 Controller" by Marshle (formerly CodySmith1), CC BY 4.0, modified</string>
+    <string name="questMenu_adjustScreen">Adjust screen</string>
+    <string name="questAdjust_title">Adjust screen</string>
+    <string name="questAdjust_hint">Hold grip and move: position   Stick up/down: size   A/B: done</string>
 </resources>

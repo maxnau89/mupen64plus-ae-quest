@@ -50,12 +50,11 @@ enum QuadId {
     QUAD_GAME = 0,
     QUAD_MENU = 1,
     QUAD_CONTROLLER = 2,
-    QUAD_PANEL = 3,
     QUAD_COUNT
 };
 
 // Back to front; the 3D controller is drawn between the 2D controller and the menu
-const QuadId kQuadOrder[QUAD_COUNT] = {QUAD_PANEL, QUAD_GAME, QUAD_CONTROLLER, QUAD_MENU};
+const QuadId kQuadOrder[QUAD_COUNT] = {QUAD_GAME, QUAD_CONTROLLER, QUAD_MENU};
 
 // How a quad's pose is interpreted, must match QuestXr.java
 enum Attach {
@@ -105,6 +104,8 @@ struct QuadSettings {
     float yaw = 0.0f;     // radians around +Y
     float width = 2.0f;   // meters
     bool blendAlpha = false;
+    float cornerRadius = 0.0f;  // meters, rounds the corners when blending
+    bool opaqueSource = false;  // ignore the source alpha, e.g. for the emulator output
 };
 
 struct InputState {
@@ -182,6 +183,9 @@ struct XrState {
     bool grabBlockedLogged = false;
     // Grabbing the game screen with a grip, only while grabbing is enabled (VR menu open)
     std::atomic<bool> grabEnabled{false};
+    // Screen adjust mode: either stick resizes the screen without grabbing
+    std::atomic<bool> stickResizeEnabled{false};
+    bool stickResizing = false;
     int grabHand = -1;
     XrVector3f grabOffset = {};
 
@@ -200,6 +204,9 @@ struct XrState {
     GLuint framebuffer = 0;
     GLint texMatrixLocation = -1;
     GLint decodeSrgbLocation = -1;
+    GLint opaqueLocation = -1;
+    GLint cornerLocation = -1;
+    GLint cornerSoftnessLocation = -1;
     bool glReady = false;
 
     bool passthroughSupported = false;
@@ -551,8 +558,10 @@ bool initCopyGl(JNIEnv* env, XrState& xr) {
 layout(location = 0) in vec2 aPosition;
 uniform mat4 uTexMatrix;
 out vec2 vUv;
+out vec2 vQuad;
 void main() {
     vec2 uv = aPosition * 0.5 + 0.5;
+    vQuad = uv;
     vUv = (uTexMatrix * vec4(uv, 0.0, 1.0)).xy;
     gl_Position = vec4(aPosition, 0.0, 1.0);
 })";
@@ -561,12 +570,21 @@ void main() {
 precision mediump float;
 uniform samplerExternalOES uTexture;
 uniform float uDecodeSrgb;
+uniform float uOpaque;
+uniform vec2 uCorner;       // corner radius as a fraction of width and height
+uniform vec2 uCornerSoftness;
 in vec2 vUv;
+in vec2 vQuad;
 out vec4 outColor;
 void main() {
     vec4 color = texture(uTexture, vUv);
     // sRGB swapchains re-encode on write, so undo the gamma the source already applied
     if (uDecodeSrgb > 0.5) color.rgb = pow(color.rgb, vec3(2.2));
+    if (uOpaque > 0.5) color.a = 1.0;
+    if (uCorner.x > 0.0) {
+        vec2 d = max(abs(vQuad - 0.5) - (0.5 - uCorner), 0.0) / uCorner;
+        color.a *= 1.0 - smoothstep(1.0 - uCornerSoftness.x, 1.0, length(d));
+    }
     outColor = color;
 })";
 
@@ -589,6 +607,9 @@ void main() {
     }
     xr.texMatrixLocation = glGetUniformLocation(xr.program, "uTexMatrix");
     xr.decodeSrgbLocation = glGetUniformLocation(xr.program, "uDecodeSrgb");
+    xr.opaqueLocation = glGetUniformLocation(xr.program, "uOpaque");
+    xr.cornerLocation = glGetUniformLocation(xr.program, "uCorner");
+    xr.cornerSoftnessLocation = glGetUniformLocation(xr.program, "uCornerSoftness");
     glGenFramebuffers(1, &xr.framebuffer);
 
     jclass textureClass = env->FindClass("android/graphics/SurfaceTexture");
@@ -637,7 +658,7 @@ void destroyCopyGl(JNIEnv* env, XrState& xr) {
 }
 
 // Copies the latest source frame into the next swapchain image of the quad.
-void copyQuad(JNIEnv* env, XrState& xr, Quad& quad) {
+void copyQuad(JNIEnv* env, XrState& xr, Quad& quad, const QuadSettings& settings) {
     if (quad.sourceTexture == nullptr || quad.swapchain == XR_NULL_HANDLE) {
         return;
     }
@@ -678,6 +699,16 @@ void copyQuad(JNIEnv* env, XrState& xr, Quad& quad) {
     glBindTexture(0x8D65 /* GL_TEXTURE_EXTERNAL_OES */, quad.oesTexture);
     glUniformMatrix4fv(xr.texMatrixLocation, 1, GL_FALSE, matrix);
     glUniform1f(xr.decodeSrgbLocation, xr.decodeSrgb ? 1.0f : 0.0f);
+    glUniform1f(xr.opaqueLocation, settings.opaqueSource ? 1.0f : 0.0f);
+    if (settings.cornerRadius > 0.0f && settings.width > 0.0f) {
+        const float height = settings.width * static_cast<float>(quad.height) / static_cast<float>(quad.width);
+        const float radiusPixels = settings.cornerRadius / settings.width * static_cast<float>(quad.width);
+        glUniform2f(xr.cornerLocation, settings.cornerRadius / settings.width, settings.cornerRadius / height);
+        // About one and a half pixels of antialiasing
+        glUniform2f(xr.cornerSoftnessLocation, std::min(0.5f, 1.5f / std::max(radiusPixels, 1.0f)), 0.0f);
+    } else {
+        glUniform2f(xr.cornerLocation, 0.0f, 0.0f);
+    }
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, kQuad);
     glEnableVertexAttribArray(0);
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -777,6 +808,30 @@ void updateGrab(JNIEnv* env, XrState& xr, XrTime time, XrDuration period, const 
     if (!enabled) {
         return;
     }
+
+    if (xr.stickResizeEnabled) {
+        const float left = xr.input.sticks[HAND_LEFT].y;
+        const float right = xr.input.sticks[HAND_RIGHT].y;
+        const float stick = std::fabs(left) > std::fabs(right) ? left : right;
+        if (std::fabs(stick) > 0.2f) {
+            std::lock_guard<std::mutex> lock(xr.quadMutex);
+            QuadSettings& screen = xr.quads[QUAD_GAME].settings;
+            const float seconds = static_cast<float>(period) * 1e-9f;
+            screen.width = std::min(8.0f, std::max(0.3f, screen.width * std::exp(stick * seconds * 1.2f)));
+            xr.stickResizing = true;
+        } else if (xr.stickResizing) {
+            xr.stickResizing = false;
+            QuadSettings resized;
+            {
+                std::lock_guard<std::mutex> lock(xr.quadMutex);
+                resized = xr.quads[QUAD_GAME].settings;
+            }
+            env->CallVoidMethod(xr.listener, xr.onScreenMoved, resized.position.x, resized.position.y,
+                                resized.position.z, resized.yaw, resized.width);
+            clearException(env, "onXrScreenMoved");
+        }
+    }
+
     for (int hand = 0; hand < HAND_COUNT; ++hand) {
         if (xr.input.grips[hand] > 0.7f && hands[hand] == nullptr && !xr.grabBlockedLogged) {
             xr.grabBlockedLogged = true;
@@ -848,10 +903,17 @@ bool controllerMatrix(const XrPosef* hands[HAND_COUNT], float* model) {
     z = {z.x / length, z.y / length, z.z / length};
     const XrVector3f y = {z.y * x.z - z.z * x.y, z.z * x.x - z.x * x.z, z.x * x.y - z.y * x.x};
 
+    // Flatter than the Touch controllers: tilt the face towards the far edge (rotate around x)
+    const float tilt = 35.0f * static_cast<float>(M_PI) / 180.0f;
+    const float c = std::cos(tilt), s = std::sin(tilt);
+    const XrVector3f flatY = {y.x * c - z.x * s, y.y * c - z.y * s, y.z * c - z.z * s};
+    const XrVector3f flatZ = {z.x * c + y.x * s, z.y * c + y.y * s, z.z * c + y.z * s};
+
     XrVector3f center = {(l.x + r.x) * 0.5f, (l.y + r.y) * 0.5f, (l.z + r.z) * 0.5f};
-    // Slightly above the hands and away from the player so it doesn't intersect the Touch controllers
-    center = add(center, {y.x * 0.04f - z.x * 0.03f, y.y * 0.04f - z.y * 0.03f, y.z * 0.04f - z.z * 0.03f});
-    questxr::matrixFromBasis(x, y, z, center, 1.3f, model);
+    // Down into the hands and slightly away from the player
+    center = add(center, {-flatY.x * 0.03f - flatZ.x * 0.03f, -flatY.y * 0.03f - flatZ.y * 0.03f,
+                          -flatY.z * 0.03f - flatZ.z * 0.03f});
+    questxr::matrixFromBasis(x, flatY, flatZ, center, 1.0f, model);
     return true;
 }
 
@@ -1051,7 +1113,7 @@ void renderFrame(XrState& xr, JNIEnv* env) {
                 continue;
             }
             if (xr.glReady) {
-                copyQuad(env, xr, quad);
+                copyQuad(env, xr, quad, settings[i]);
             }
             if (!quad.hasImage) {
                 continue;
@@ -1214,7 +1276,7 @@ bool createEyeSwapchains(XrState& xr) {
 }
 
 bool createXrSession(XrState& xr, jint gameWidth, jint gameHeight, jint menuWidth, jint menuHeight,
-                     jint controllerWidth, jint controllerHeight, jint panelWidth, jint panelHeight) {
+                     jint controllerWidth, jint controllerHeight) {
     if (!gLoaderInitialized) {
         PFN_xrInitializeLoaderKHR initializeLoader = nullptr;
         if (!getProc(XR_NULL_HANDLE, "xrInitializeLoaderKHR", initializeLoader)) {
@@ -1317,7 +1379,6 @@ bool createXrSession(XrState& xr, jint gameWidth, jint gameHeight, jint menuWidt
            createQuadSwapchain(xr, xr.quads[QUAD_GAME], gameWidth, gameHeight) &&
            createQuadSwapchain(xr, xr.quads[QUAD_MENU], menuWidth, menuHeight) &&
            createQuadSwapchain(xr, xr.quads[QUAD_CONTROLLER], controllerWidth, controllerHeight) &&
-           createQuadSwapchain(xr, xr.quads[QUAD_PANEL], panelWidth, panelHeight) &&
            createEyeSwapchains(xr);
 }
 
@@ -1335,8 +1396,7 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, j
                                                                   jobject activity, jobject listener,
                                                                   jint gameWidth, jint gameHeight,
                                                                   jint menuWidth, jint menuHeight,
-                                                                  jint controllerWidth, jint controllerHeight,
-                                                                  jint panelWidth, jint panelHeight) {
+                                                                  jint controllerWidth, jint controllerHeight) {
     if (gXr != nullptr) {
         LOGE("XR already created");
         return JNI_FALSE;
@@ -1357,7 +1417,7 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, j
     }
 
     const bool created = createXrSession(*xr, gameWidth, gameHeight, menuWidth, menuHeight,
-                                         controllerWidth, controllerHeight, panelWidth, panelHeight);
+                                         controllerWidth, controllerHeight);
     // The frame thread makes the context current again
     if (xr->eglDisplay != EGL_NO_DISPLAY) {
         eglMakeCurrent(xr->eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -1383,7 +1443,8 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetSourceTexture(JNIE
 JNIEXPORT void JNICALL
 Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetQuad(JNIEnv*, jclass, jint quad, jboolean visible,
                                                                    jint attach, jfloat x, jfloat y, jfloat z,
-                                                                   jfloat yaw, jfloat width, jboolean blendAlpha) {
+                                                                   jfloat yaw, jfloat width, jboolean blendAlpha,
+                                                                   jfloat cornerRadius, jboolean opaqueSource) {
     if (gXr == nullptr || quad < 0 || quad >= QUAD_COUNT) {
         return;
     }
@@ -1391,13 +1452,22 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetQuad(JNIEnv*, jcla
     QuadSettings& settings = gXr->quads[quad].settings;
     settings.visible = visible;
     settings.attach = attach;
-    // Don't fight an active grab of the game screen
-    if (!(quad == QUAD_GAME && gXr->grabHand >= 0)) {
+    // Don't fight an active grab or resize of the game screen
+    if (!(quad == QUAD_GAME && (gXr->grabHand >= 0 || gXr->stickResizing))) {
         settings.position = {x, y, z};
         settings.yaw = yaw;
         settings.width = width;
     }
     settings.blendAlpha = blendAlpha;
+    settings.cornerRadius = cornerRadius;
+    settings.opaqueSource = opaqueSource;
+}
+
+JNIEXPORT void JNICALL
+Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetStickResizeEnabled(JNIEnv*, jclass, jboolean enabled) {
+    if (gXr != nullptr) {
+        gXr->stickResizeEnabled = enabled;
+    }
 }
 
 JNIEXPORT void JNICALL

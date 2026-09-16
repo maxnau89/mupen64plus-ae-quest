@@ -37,6 +37,9 @@ public class QuestTouchController extends AbstractController implements QuestXr.
 
         void onXrMenuBack();
 
+        /** A, B or a Menu tap while adjusting the screen. */
+        void onXrAdjustFinished();
+
         void onXrScreenMoved(float x, float y, float z, float yaw, float width);
 
         /** The N64 controller state changed, arrays are copies. */
@@ -55,6 +58,7 @@ public class QuestTouchController extends AbstractController implements QuestXr.
     private final SessionListener mSessionListener;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private volatile boolean mMenuOpen = false;
+    private volatile boolean mAdjusting = false;
     private boolean mFocused = false;
     private int mLastButtons = 0;
 
@@ -78,6 +82,12 @@ public class QuestTouchController extends AbstractController implements QuestXr.
     {
         super(coreFragment);
         mSessionListener = sessionListener;
+    }
+
+    /** While adjusting the screen, input only ends the adjust mode. May be called from any thread. */
+    public void setAdjusting(boolean adjusting)
+    {
+        mAdjusting = adjusting;
     }
 
     /** Route input to the menu instead of the game. May be called from any thread. */
@@ -106,6 +116,13 @@ public class QuestTouchController extends AbstractController implements QuestXr.
             return;
         } else if ((released & QuestXr.BTN_MENU) != 0 && !mMenuHoldConsumed) {
             menuTapped = true;
+        }
+
+        if (mAdjusting) {
+            if (menuTapped || (pressed & (QuestXr.BTN_A | QuestXr.BTN_B)) != 0) {
+                post(mSessionListener::onXrAdjustFinished);
+            }
+            return;
         }
 
         if (mMenuOpen) {

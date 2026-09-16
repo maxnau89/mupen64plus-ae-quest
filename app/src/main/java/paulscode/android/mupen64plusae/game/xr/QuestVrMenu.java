@@ -37,6 +37,9 @@ public class QuestVrMenu
 
         void onVrMenuResetScreen();
 
+        /** Hide the menu and let the player move and resize the screen with the controllers. */
+        void onVrMenuAdjustScreen();
+
         boolean isPassthroughSupported();
 
         boolean isPassthroughEnabled();
@@ -51,8 +54,8 @@ public class QuestVrMenu
 
     private enum Item
     {
-        RESUME, SAVE, LOAD, SLOT, PASSTHROUGH, CONTROLLER, SPEED, FRAME_LIMITER, SCREENSHOT, RESET_SCREEN,
-        RESET, EXIT
+        RESUME, SAVE, LOAD, SLOT, ADJUST_SCREEN, RESET_SCREEN, PASSTHROUGH, CONTROLLER, SPEED, FRAME_LIMITER,
+        SCREENSHOT, RESET, EXIT
     }
 
     private final Surface mSurface;
@@ -198,6 +201,10 @@ public class QuestVrMenu
                 mHost.onVrMenuScreenshot();
                 mStatus = mResources.getString(R.string.questMenu_screenshotSaved);
                 break;
+            case ADJUST_SCREEN:
+                mOpen = false;
+                mHost.onVrMenuAdjustScreen();
+                return;
             case RESET_SCREEN:
                 mHost.onVrMenuResetScreen();
                 break;
@@ -271,6 +278,8 @@ public class QuestVrMenu
                 return mResources.getString(R.string.questMenu_frameLimiter, onOff(mCoreFragment.getFramelimiter()));
             case SCREENSHOT:
                 return mResources.getString(R.string.questMenu_screenshot);
+            case ADJUST_SCREEN:
+                return mResources.getString(R.string.questMenu_adjustScreen);
             case RESET_SCREEN:
                 return mResources.getString(R.string.questMenu_resetScreen);
             case RESET:
@@ -318,14 +327,38 @@ public class QuestVrMenu
 
             final float footer = mHeight - padding;
             canvas.drawText(mResources.getString(R.string.questMenu_hintNavigate), padding, footer, mHintPaint);
-            canvas.drawText(mResources.getString(R.string.questMenu_hintGrab), padding, footer - 44, mHintPaint);
             if (!mStatus.isEmpty()) {
-                canvas.drawText(mStatus, padding, footer - 88, mHintPaint);
+                canvas.drawText(mStatus, padding, footer - 44, mHintPaint);
             }
             if (mHost.getControllerMode() == QuestN64Overlay.MODE_HANDS) {
                 canvas.drawText(ellipsize(mResources.getString(R.string.questMenu_modelCredits), mCreditsPaint,
                         mWidth - 2 * padding), padding, mHeight - 14, mCreditsPaint);
             }
+        } finally {
+            mSurface.unlockCanvasAndPost(canvas);
+        }
+    }
+
+    /** Draws only a hint banner at the bottom of the menu surface, used while adjusting the screen. */
+    public void drawAdjustHint()
+    {
+        if (mSurface == null || !mSurface.isValid()) {
+            return;
+        }
+        final Canvas canvas;
+        try {
+            canvas = mSurface.lockHardwareCanvas();
+        } catch (IllegalStateException | IllegalArgumentException e) {
+            Log.e(TAG, "Unable to lock menu surface", e);
+            return;
+        }
+        try {
+            canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
+            final float top = mHeight - 190;
+            canvas.drawRoundRect(new RectF(0, top, mWidth, mHeight), 36, 36, mBackgroundPaint);
+            canvas.drawText(mResources.getString(R.string.questAdjust_title), 48, top + 70, mTitlePaint);
+            canvas.drawText(ellipsize(mResources.getString(R.string.questAdjust_hint), mHintPaint, mWidth - 96),
+                    48, top + 140, mHintPaint);
         } finally {
             mSurface.unlockCanvasAndPost(canvas);
         }

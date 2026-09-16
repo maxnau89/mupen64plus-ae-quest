@@ -17,8 +17,8 @@ import java.nio.ByteBuffer;
 /**
  * Thin wrapper around the native OpenXR session (quest-xr module).
  * <p>
- * The session shows quad layers for the game, a panel frame behind it, the VR menu and a 2D N64
- * controller, a 3D N64 controller in the projection layer, optionally over passthrough.
+ * The session shows quad layers for the game, the VR menu and a 2D N64 controller, and a 3D N64
+ * controller in the projection layer, optionally over passthrough.
  * Each quad gets a Surface backed by a SurfaceTexture; the native frame thread copies whatever
  * is drawn into it into an OpenXR swapchain.
  */
@@ -49,8 +49,7 @@ public class QuestXr
     public static final int QUAD_GAME = 0;
     public static final int QUAD_MENU = 1;
     public static final int QUAD_CONTROLLER = 2;
-    public static final int QUAD_PANEL = 3;
-    private static final int QUAD_COUNT = 4;
+    private static final int QUAD_COUNT = 3;
 
     // Quad attach modes, must match quest_xr.cpp
     /** Position and yaw in the tracking space */
@@ -99,19 +98,17 @@ public class QuestXr
      * @return False if XR is unavailable
      */
     public static boolean create(Activity activity, Listener listener, int gameWidth, int gameHeight,
-                                 int menuWidth, int menuHeight, int controllerWidth, int controllerHeight,
-                                 int panelWidth, int panelHeight)
+                                 int menuWidth, int menuHeight, int controllerWidth, int controllerHeight)
     {
         if (!isQuestDevice() || !loadLibrary()) {
             return false;
         }
         if (!nativeCreate(activity, listener, gameWidth, gameHeight, menuWidth, menuHeight,
-                controllerWidth, controllerHeight, panelWidth, panelHeight)) {
+                controllerWidth, controllerHeight)) {
             return false;
         }
 
-        final int[][] sizes = {{gameWidth, gameHeight}, {menuWidth, menuHeight}, {controllerWidth, controllerHeight},
-                {panelWidth, panelHeight}};
+        final int[][] sizes = {{gameWidth, gameHeight}, {menuWidth, menuHeight}, {controllerWidth, controllerHeight}};
         for (int quad = 0; quad < QUAD_COUNT; ++quad) {
             // Created detached; the native frame thread attaches it to its own GL context
             sTextures[quad] = new SurfaceTexture(false);
@@ -193,12 +190,22 @@ public class QuestXr
      * @param yaw Rotation around the vertical axis in radians, 0 faces the initial head position
      * @param width Width in meters
      * @param blendAlpha Whether the quad's alpha channel is used for blending
+     * @param cornerRadius Rounds the corners by this many meters, needs blendAlpha
+     * @param opaqueSource Treat the drawn content as opaque, e.g. the emulator output
      */
     public static void setQuad(int quad, boolean visible, int attach, float x, float y, float z, float yaw,
-                               float width, boolean blendAlpha)
+                               float width, boolean blendAlpha, float cornerRadius, boolean opaqueSource)
     {
         if (sLibraryLoaded) {
-            nativeSetQuad(quad, visible, attach, x, y, z, yaw, width, blendAlpha);
+            nativeSetQuad(quad, visible, attach, x, y, z, yaw, width, blendAlpha, cornerRadius, opaqueSource);
+        }
+    }
+
+    /** While enabled, either thumbstick resizes the game screen without grabbing it. */
+    public static void setStickResizeEnabled(boolean enabled)
+    {
+        if (sLibraryLoaded) {
+            nativeSetStickResizeEnabled(enabled);
         }
     }
 
@@ -245,10 +252,12 @@ public class QuestXr
 
     private static native boolean nativeCreate(Activity activity, Listener listener, int gameWidth, int gameHeight,
                                                int menuWidth, int menuHeight, int controllerWidth,
-                                               int controllerHeight, int panelWidth, int panelHeight);
+                                               int controllerHeight);
     private static native void nativeSetSourceTexture(int quad, SurfaceTexture texture);
     private static native void nativeSetQuad(int quad, boolean visible, int attach, float x, float y, float z,
-                                             float yaw, float width, boolean blendAlpha);
+                                             float yaw, float width, boolean blendAlpha, float cornerRadius,
+                                             boolean opaqueSource);
+    private static native void nativeSetStickResizeEnabled(boolean enabled);
     private static native void nativeSetGrabEnabled(boolean enabled);
     private static native boolean nativeSetControllerModel(ByteBuffer mesh, Bitmap texture);
     private static native void nativeSetN64State(int buttons, float axisX, float axisY);

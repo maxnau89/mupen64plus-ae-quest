@@ -22,5 +22,7 @@
     <string name="questMenu_on">An</string>
     <string name="questMenu_off">Aus</string>
     <string name="questMenu_hintNavigate">Stick: Auswahl   ◀▶: ändern   A: OK   B: zurück</string>
-    <string name="questMenu_hintGrab">Grip halten: Bild verschieben   Stick dabei: Größe</string>
+    <string name="questMenu_adjustScreen">Bild anpassen</string>
+    <string name="questAdjust_title">Bild anpassen</string>
+    <string name="questAdjust_hint">Grip halten und bewegen: Position   Stick hoch/runter: Größe   A/B: fertig</string>
 </resources>
