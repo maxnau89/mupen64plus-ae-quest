@@ -26,14 +26,19 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Configuration;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.text.TextUtils;
+import android.text.InputType;
 import android.util.Log;
 import android.view.PointerIcon;
 import android.view.View;
 import android.widget.LinearLayout;
+import android.widget.CheckBox;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.ImageView;
@@ -44,6 +49,7 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SearchView;
 import androidx.appcompat.widget.SearchView.OnQueryTextListener;
@@ -68,6 +74,7 @@ import paulscode.android.mupen64plusae.dialog.ConfirmationDialog;
 import paulscode.android.mupen64plusae.dialog.ConfirmationDialog.PromptConfirmListener;
 import paulscode.android.mupen64plusae.dialog.LocaleDialog;
 import paulscode.android.mupen64plusae.dialog.Popups;
+import paulscode.android.mupen64plusae.dialog.Prompt;
 import paulscode.android.mupen64plusae.game.GameActivity;
 import paulscode.android.mupen64plusae.jni.CoreService;
 import paulscode.android.mupen64plusae.persistent.AppData;
@@ -80,6 +87,7 @@ import paulscode.android.mupen64plusae.task.GalleryRefreshTask.GalleryRefreshFin
 import paulscode.android.mupen64plusae.task.SyncProgramsJobService;
 import paulscode.android.mupen64plusae.util.CountryCode;
 import paulscode.android.mupen64plusae.util.DisplayWrapper;
+import paulscode.android.mupen64plusae.util.LegacyFilePicker;
 import paulscode.android.mupen64plusae.util.FileUtil;
 import paulscode.android.mupen64plusae.util.LocaleContextWrapper;
 import paulscode.android.mupen64plusae.util.Notifier;
@@ -136,6 +144,10 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
 
     private ScanRomsFragment mCacheRomInfoFragment = null;
 
+    // Add ROMs section
+    private boolean mScanSingleFile = false;
+    private Runnable mPendingScanAction = null;
+
     //If this is set to true, the gallery will be refreshed next time this activity is resumed
     boolean mRefreshNeeded = false;
 
@@ -177,30 +189,43 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
                 }
             });
 
-    ActivityResultLauncher<Intent> mLaunchScanRoms = registerForActivityResult(
+    ActivityResultLauncher<Intent> mLaunchLegacyFilePicker = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
-                Intent data = result.getData();
+                final Intent data = result.getData();
                 if (result.getResultCode() == Activity.RESULT_OK && data != null) {
-                    // Call this here as well since onActivityResult happens before onResume
-                    createSearchMenu();
-
                     final Bundle extras = data.getExtras();
-
                     if (extras != null) {
-                        final String searchUri = extras.getString( ActivityHelper.Keys.SEARCH_PATH );
-                        final boolean searchZips = extras.getBoolean( ActivityHelper.Keys.SEARCH_ZIPS );
-                        final boolean downloadArt = extras.getBoolean( ActivityHelper.Keys.DOWNLOAD_ART );
-                        final boolean clearGallery = extras.getBoolean( ActivityHelper.Keys.CLEAR_GALLERY );
-                        final boolean searchSubdirectories = extras.getBoolean( ActivityHelper.Keys.SEARCH_SUBDIR );
-                        final boolean searchSingleFile = extras.getBoolean( ActivityHelper.Keys.SEARCH_SINGLE_FILE );
-
-                        if (searchUri != null)
-                        {
-                            refreshRoms(searchUri, searchZips, downloadArt, clearGallery, searchSubdirectories, searchSingleFile);
-                        }
+                        startScan(extras.getString(ActivityHelper.Keys.SEARCH_PATH), mScanSingleFile);
                     }
                 }
+            });
+
+    ActivityResultLauncher<Intent> mLaunchDocumentPicker = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                final Intent data = result.getData();
+                if (result.getResultCode() != Activity.RESULT_OK || data == null || data.getData() == null) {
+                    return;
+                }
+                final Uri uri = data.getData();
+                try {
+                    getContentResolver().takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                } catch (SecurityException e) {
+                    Log.e("GalleryActivity", "No permission for " + uri, e);
+                    return;
+                }
+                startScan(uri.toString(), mScanSingleFile);
+            });
+
+    ActivityResultLauncher<Intent> mManageStorageLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
+                        && mPendingScanAction != null) {
+                    mPendingScanAction.run();
+                }
+                mPendingScanAction = null;
             });
 
     private void loadGameFromExtras( Bundle extras) {
@@ -361,6 +386,7 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
 
         mRootLayout = findViewById( R.id.drawerLayout );
         setupQuestRail();
+        setupQuestAddRoms();
 
         // find the retained fragment on activity restarts
         final FragmentManager fm = getSupportFragmentManager();
@@ -745,6 +771,7 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         back.setOnClickListener(v -> hideQuestGameDetail());
         findViewById(R.id.gallery_empty_icon).setVisibility(View.INVISIBLE);
         findViewById(R.id.questSection).setVisibility(View.GONE);
+        findViewById(R.id.questAddRoms).setVisibility(View.GONE);
         mQuestSection = QuestSection.LIBRARY;
         updateQuestRailSelection();
         mGridView.setVisibility(View.INVISIBLE);
@@ -1026,7 +1053,7 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         mLaunchGame.launch(intent);
     }
 
-    private enum QuestSection { LIBRARY, SETTINGS, PROFILES, TOOLS, ABOUT }
+    private enum QuestSection { LIBRARY, SETTINGS, PROFILES, TOOLS, ADD_ROMS, ABOUT }
 
     private QuestSection mQuestSection = QuestSection.LIBRARY;
 
@@ -1057,7 +1084,7 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         setupQuestRailItem(R.id.railProfiles, R.drawable.ic_sliders, R.string.menuItem_profiles,
                 v -> showQuestSection(QuestSection.PROFILES));
         setupQuestRailItem(R.id.railAddRoms, R.drawable.ic_refresh, R.string.quest_rail_addRoms,
-                this::onFabRefreshRomsClick);
+                v -> showQuestSection(QuestSection.ADD_ROMS));
         setupQuestRailItem(R.id.railTools, R.drawable.ic_circuit, R.string.menuItem_Tools,
                 v -> showQuestSection(QuestSection.TOOLS));
         setupQuestRailItem(R.id.railAbout, R.drawable.ic_about, R.string.menuItem_about,
@@ -1078,6 +1105,7 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         findViewById(R.id.railLibrary).setSelected(mQuestSection == QuestSection.LIBRARY);
         findViewById(R.id.railSettings).setSelected(mQuestSection == QuestSection.SETTINGS);
         findViewById(R.id.railProfiles).setSelected(mQuestSection == QuestSection.PROFILES);
+        findViewById(R.id.railAddRoms).setSelected(mQuestSection == QuestSection.ADD_ROMS);
         findViewById(R.id.railTools).setSelected(mQuestSection == QuestSection.TOOLS);
         findViewById(R.id.railAbout).setSelected(mQuestSection == QuestSection.ABOUT);
     }
@@ -1091,9 +1119,11 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         updateQuestRailSelection();
 
         final View sectionView = findViewById(R.id.questSection);
+        final View addRomsView = findViewById(R.id.questAddRoms);
         final TextView title = findViewById(R.id.questTitle);
         final TextView subtitle = findViewById(R.id.questSubtitle);
         hideSoftKeyboard();
+        addRomsView.setVisibility(View.GONE);
 
         if (section == QuestSection.LIBRARY) {
             sectionView.setVisibility(View.GONE);
@@ -1104,6 +1134,18 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
                 mGridView.getLayoutManager().scrollToPosition(0);
             }
             refreshGrid(mItemsCache, mRecentItemsCache);
+            return;
+        }
+
+        if (section == QuestSection.ADD_ROMS) {
+            title.setText(R.string.quest_rail_addRoms);
+            subtitle.setText(R.string.scanRomsDialog_selectRom);
+            sectionView.setVisibility(View.GONE);
+            findViewById(R.id.questSearchPill).setVisibility(View.GONE);
+            findViewById(R.id.gallery_empty_icon).setVisibility(View.INVISIBLE);
+            mGridView.setVisibility(View.INVISIBLE);
+            addRomsView.scrollTo(0, 0);
+            addRomsView.setVisibility(View.VISIBLE);
             return;
         }
 
@@ -1297,9 +1339,100 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         subtitle.setText(getString(R.string.quest_library_count, Math.min(shown, total), total));
     }
 
-    public void onFabRefreshRomsClick(View view)
+    // ------------------------------------------------------------------------------------------
+    // Add ROMs, a section so the rail stays visible while a source is picked
+
+    private void setupQuestAddRoms()
     {
-        Intent intent = new Intent(this, ScanRomsActivity.class);
-        mLaunchScanRoms.launch(intent);
+        findViewById(R.id.buttonFolderPicker).setOnClickListener(v -> startPicker(false));
+        findViewById(R.id.buttonFilePicker).setOnClickListener(v -> startPicker(true));
+        findViewById(R.id.buttonEnterPath).setOnClickListener(
+                v -> ensureManageStoragePermission(this::startManualPathEntry));
+
+        ((CheckBox) findViewById(R.id.checkBox1)).setChecked(true);
+        ((CheckBox) findViewById(R.id.checkBox2)).setChecked(true);
+        ((CheckBox) findViewById(R.id.checkBox3)).setChecked(false);
+        ((CheckBox) findViewById(R.id.checkBox4)).setChecked(true);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && mAppData.useLegacyFileBrowser) {
+            final TextView noSaf = findViewById(R.id.textNoSafSupport);
+            noSaf.setText(getString(R.string.scanRomsDialog_no_saf) + " " + mGlobalPrefs.externalRomsDirNoSaf);
+            noSaf.setVisibility(View.VISIBLE);
+        }
+    }
+
+    private void startPicker(boolean singleFile)
+    {
+        mScanSingleFile = singleFile;
+        if (mAppData.useLegacyFileBrowser) {
+            final Intent intent = new Intent(this, LegacyFilePicker.class);
+            intent.putExtra(ActivityHelper.Keys.CAN_SELECT_FILE, singleFile);
+            intent.putExtra(ActivityHelper.Keys.CAN_VIEW_EXT_STORAGE, true);
+            mLaunchLegacyFilePicker.launch(intent);
+            return;
+        }
+
+        final Intent intent = new Intent(singleFile ? Intent.ACTION_OPEN_DOCUMENT : Intent.ACTION_OPEN_DOCUMENT_TREE);
+        if (singleFile) {
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+        }
+        intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+        intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
+        mLaunchDocumentPicker.launch(intent);
+    }
+
+    private void ensureManageStoragePermission(Runnable onGranted)
+    {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+            onGranted.run();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.scanRomsDialog_storage_permission_title)
+                .setMessage(R.string.scanRomsDialog_storage_permission_message)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    final Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    mPendingScanAction = onGranted;
+                    mManageStorageLauncher.launch(intent);
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void startManualPathEntry()
+    {
+        Prompt.promptText(this, getString(R.string.scanRomsDialog_enter_path_title), null, "/storage/emulated/0/",
+                getString(R.string.scanRomsDialog_enter_path_hint), InputType.TYPE_CLASS_TEXT,
+                (text, which) -> {
+                    if (which != DialogInterface.BUTTON_POSITIVE || text == null) {
+                        return;
+                    }
+                    final String path = text.toString().trim();
+                    final File dir = new File(path);
+                    if (dir.exists() && dir.isDirectory()) {
+                        startScan(Uri.fromFile(dir).toString(), false);
+                    } else {
+                        Notifier.showToast(this, R.string.scanRomsDialog_path_not_found, path);
+                    }
+                });
+    }
+
+    /** Scan the picked source with the options of the Add ROMs section and go back to the library. */
+    private void startScan(String searchUri, boolean singleFile)
+    {
+        if (searchUri == null) {
+            return;
+        }
+        createSearchMenu();
+        showQuestSection(QuestSection.LIBRARY);
+        refreshRoms(searchUri,
+                ((CheckBox) findViewById(R.id.checkBox1)).isChecked(),
+                ((CheckBox) findViewById(R.id.checkBox2)).isChecked(),
+                ((CheckBox) findViewById(R.id.checkBox3)).isChecked(),
+                ((CheckBox) findViewById(R.id.checkBox4)).isChecked(),
+                singleFile);
     }
 }

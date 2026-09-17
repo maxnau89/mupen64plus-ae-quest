@@ -76,6 +76,8 @@
 
             <include layout="@layout/quest_section" />
 
+            <include layout="@layout/quest_add_roms" />
+
             <ImageView
                 android:id="@+id/gallery_empty_icon"
                 android:layout_width="180dp"

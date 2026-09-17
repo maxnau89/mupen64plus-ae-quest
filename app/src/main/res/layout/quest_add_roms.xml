@@ -1,11 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Add ROMs (ui_kits/quest_vr, PreferenceRow + Panel) -->
+<!-- Add ROMs section inside the library slab (ui_kits/quest_vr, PreferenceRow + Panel) -->
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/questAddRoms"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/quest_slab_ground"
+    android:visibility="gone"
+    android:background="@color/quest_slab_fill"
     android:clipToPadding="false"
-    android:padding="@dimen/quest_slab_inset">
+    android:padding="@dimen/quest_slab_inset"
+    app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -13,24 +17,16 @@
         android:orientation="vertical">
 
         <TextView
-            android:id="@+id/text1"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/scanRomsDialog_selectRom"
-            style="@style/QuestSubtitle" />
-
-        <TextView
             android:id="@+id/textNoSafSupport"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/quest_gap_min"
+            android:layout_marginBottom="@dimen/quest_gap_min"
             android:visibility="gone"
             style="@style/QuestRowTitle" />
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/quest_gap_min"
             android:orientation="vertical"
             android:divider="@drawable/quest_divider"
             android:showDividers="middle"
@@ -133,14 +129,6 @@
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>
-
-        <TextView
-            android:id="@+id/fileDescription"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="@dimen/quest_gap_min"
-            android:visibility="gone"
-            style="@style/QuestSubtitle" />
 
         <TextView
             android:layout_width="match_parent"
