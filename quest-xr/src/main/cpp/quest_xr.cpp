@@ -223,7 +223,9 @@ struct XrState {
 };
 
 JavaVM* gVm = nullptr;
-bool gLoaderInitialized = false;
+// Application context for the OpenXR loader. It must outlive every session: the runtime keeps using
+// it after the loader unloaded and reloaded it, so it is never released.
+jobject gLoaderContext = nullptr;
 XrState* gXr = nullptr;
 
 // The loader only exports core functions; extension functions are looked up at runtime.
@@ -1277,19 +1279,18 @@ bool createEyeSwapchains(XrState& xr) {
 
 bool createXrSession(XrState& xr, jint gameWidth, jint gameHeight, jint menuWidth, jint menuHeight,
                      jint controllerWidth, jint controllerHeight) {
-    if (!gLoaderInitialized) {
+    {
         PFN_xrInitializeLoaderKHR initializeLoader = nullptr;
         if (!getProc(XR_NULL_HANDLE, "xrInitializeLoaderKHR", initializeLoader)) {
             return false;
         }
         XrLoaderInitInfoAndroidKHR loaderInfo{XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR};
         loaderInfo.applicationVM = gVm;
-        loaderInfo.applicationContext = xr.activity;
+        loaderInfo.applicationContext = gLoaderContext;
         if (!check(initializeLoader(reinterpret_cast<XrLoaderInitInfoBaseHeaderKHR*>(&loaderInfo)),
                    "xrInitializeLoaderKHR")) {
             return false;
         }
-        gLoaderInitialized = true;
     }
 
     xr.passthroughSupported = hasInstanceExtension(XR_FB_PASSTHROUGH_EXTENSION_NAME);
@@ -1400,6 +1401,16 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, j
     if (gXr != nullptr) {
         LOGE("XR already created");
         return JNI_FALSE;
+    }
+
+    if (gLoaderContext == nullptr) {
+        jclass activityClass = env->GetObjectClass(activity);
+        jmethodID getApplicationContext =
+            env->GetMethodID(activityClass, "getApplicationContext", "()Landroid/content/Context;");
+        jobject context = env->CallObjectMethod(activity, getApplicationContext);
+        gLoaderContext = env->NewGlobalRef(context);
+        env->DeleteLocalRef(context);
+        env->DeleteLocalRef(activityClass);
     }
 
     auto* xr = new XrState();

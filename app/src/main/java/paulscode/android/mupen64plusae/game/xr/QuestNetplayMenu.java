@@ -404,8 +404,9 @@ public class QuestNetplayMenu implements QuestNetplayRoom.Listener
         final InetAddress address = mRoom.getAddress();
         switch (mPage) {
             case SERVER:
+                // The room server picks its own port when UPnP is used, show the one it listens on
                 lines.add(mResources.getString(R.string.questNetplay_address,
-                        address != null ? address.getHostAddress() : "-", mHost.getNetplayRoomPort()));
+                        address != null ? address.getHostAddress() : "-", mRoom.getRoomPort()));
                 if (mRoom.getRoomCode() != -1) {
                     lines.add(mResources.getString(R.string.questNetplay_code, mRoom.getRoomCode()));
                 } else if (mRoom.isRequestingCode()) {
