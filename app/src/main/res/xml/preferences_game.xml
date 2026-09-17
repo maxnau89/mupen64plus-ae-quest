@@ -96,6 +96,42 @@
         mupen64:allowDisable="true"
         mupen64:managerAction=".profile.ManageTouchscreenProfilesActivity" />
 
+    <androidx.preference.PreferenceScreen
+        android:icon="@drawable/ic_display"
+        android:key="screenStereo3d"
+        android:summary="@string/stereo3d_summary"
+        android:title="@string/stereo3d_title" >
+
+        <paulscode.android.mupen64plusae.preference.CompatListPreference
+            android:defaultValue="@string/stereo3dMode_default"
+            android:entries="@array/stereo3dMode_entries"
+            android:entryValues="@array/stereo3dMode_values"
+            android:icon="@drawable/ic_display"
+            android:key="stereo3dMode"
+            android:summary="@string/selectedValue"
+            android:title="@string/stereo3dMode_title" />
+
+        <paulscode.android.mupen64plusae.preference.SeekBarPreference
+            android:defaultValue="30"
+            android:key="stereo3dSeparation"
+            android:summary="@string/stereo3dSeparation_summary"
+            android:title="@string/stereo3dSeparation_title"
+            mupen64:maximumValue="120"
+            mupen64:minimumValue="0"
+            mupen64:stepSize="5"
+            mupen64:units="" />
+
+        <paulscode.android.mupen64plusae.preference.SeekBarPreference
+            android:defaultValue="8"
+            android:key="stereo3dConvergence"
+            android:summary="@string/stereo3dConvergence_summary"
+            android:title="@string/stereo3dConvergence_title"
+            mupen64:maximumValue="40"
+            mupen64:minimumValue="1"
+            mupen64:stepSize="1"
+            mupen64:units="" />
+    </androidx.preference.PreferenceScreen>
+
     <androidx.preference.CheckBoxPreference
         android:icon="@drawable/ic_save"
         android:defaultValue="false"

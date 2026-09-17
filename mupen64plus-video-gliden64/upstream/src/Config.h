@@ -201,6 +201,21 @@ struct Config
 		f32 level;
 	} gammaCorrection;
 
+	// Experimental stereoscopic 3D: shears the combined matrix so the scene is seen from an eye
+	// offset to the side. Screen space geometry is unaffected because it never reaches the
+	// vertex transform.
+	enum StereoMode {
+		stereoOff = 0,
+		stereoLeftEye = 1,
+		stereoRightEye = 2
+	};
+
+	struct {
+		u32 mode;         // one of StereoMode
+		f32 separation;   // eye offset in clip units, 0 is mono
+		f32 convergence;  // depth that keeps zero parallax, in the same units as w
+	} stereo;
+
 	enum CountersPosition {
 		posTopLeft = 1,
 		posTopCenter = 2,

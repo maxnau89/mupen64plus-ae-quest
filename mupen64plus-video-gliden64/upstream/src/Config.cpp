@@ -137,6 +137,10 @@ void Config::resetToDefaults()
 	gammaCorrection.force = 0;
 	gammaCorrection.level = 2.0f;
 
+	stereo.mode = stereoOff;
+	stereo.separation = 0.03f;
+	stereo.convergence = 8.0f;
+
 	onScreenDisplay.vis = 0;
 	onScreenDisplay.fps = 0;
 	onScreenDisplay.percent = 0;

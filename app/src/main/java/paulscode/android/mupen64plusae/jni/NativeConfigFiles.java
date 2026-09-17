@@ -231,6 +231,10 @@ class NativeConfigFiles
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "ThreadedVideo", boolToTF( global.threadedGLideN64 ));
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "EnableHybridFilter", boolToTF( global.hybridTextureFilterGLideN64 ));
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "FXAA", boolToTF( game.glideN64Prefs.fxaa ));
+        // Experimental stereoscopic 3D, per ROM. Separation is stored in thousandths of a clip unit.
+        mupen64plus_cfg.put( "Video-GLideN64", "StereoMode", String.valueOf( game.stereo3dMode ) );
+        mupen64plus_cfg.put( "Video-GLideN64", "StereoSeparation", String.valueOf( game.stereo3dSeparation / 1000.0f ) );
+        mupen64plus_cfg.put( "Video-GLideN64", "StereoConvergence", String.valueOf( (float) game.stereo3dConvergence ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "bilinearMode", boolToTF( game.glideN64Prefs.bilinearMode ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "enableHalosRemoval", boolToTF( game.glideN64Prefs.enableHalosRemoval ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "MaxAnisotropy", String.valueOf( game.glideN64Prefs.maxAnisotropy ) );

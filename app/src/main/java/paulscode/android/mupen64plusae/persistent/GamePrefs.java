@@ -280,6 +280,15 @@ public class GamePrefs
     /** Enable 64DD support */
     public final boolean enable64DdSupport;
 
+    /** Experimental stereoscopic 3D: 0=off, 1=left eye, 2=right eye */
+    public final int stereo3dMode;
+
+    /** Eye separation in thousandths of a clip unit */
+    public final int stereo3dSeparation;
+
+    /** Depth that keeps zero parallax */
+    public final int stereo3dConvergence;
+
     /** 64DD IDL path */
     public final String idlPath64Dd;
 
@@ -315,6 +324,9 @@ public class GamePrefs
     static final String DISPLAY_ZOOM = "displayZoomSeekGame";
     static final String PLAY_SHOW_CHEATS = "playShowCheats";
     static final String SUPPORT_64DD = "support64dd";
+    static final String STEREO_3D_MODE = "stereo3dMode";
+    static final String STEREO_3D_SEPARATION = "stereo3dSeparation";
+    static final String STEREO_3D_CONVERGENCE = "stereo3dConvergence";
     static final String IDL_PATH_64DD = "idlPath64dd";
     static final String DISK_PATH_64DD = "diskPath64dd";
     static final String TRANSFER_PAK = "transferPak";
@@ -579,6 +591,10 @@ public class GamePrefs
         touchscreenAutoHold = tmpTouchscreenAutoHold;
 
         enable64DdSupport = mPreferences.getBoolean( SUPPORT_64DD, false );
+
+        stereo3dMode = getSafeInt( mPreferences, STEREO_3D_MODE, 0 );
+        stereo3dSeparation = mPreferences.getInt( STEREO_3D_SEPARATION, 30 );
+        stereo3dConvergence = mPreferences.getInt( STEREO_3D_CONVERGENCE, 8 );
 
         if (enable64DdSupport) {
             String tempIdlPath64dd = mPreferences.getString(IDL_PATH_64DD, "");

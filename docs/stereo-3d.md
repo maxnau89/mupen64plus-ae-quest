@@ -52,13 +52,29 @@ projection layer fed from two textures rather than new plumbing.
 
 ## Suggested order
 
-1. **Prove the matrix hook.** Apply a fixed shear to `gSP.matrix.combined` and render one eye. If
-   the whole scene shifts but the HUD stays put, the hook point and the 2D exclusion are right.
+1. ~~**Prove the matrix hook.**~~ **Done.** `_gSPApplyStereo()` in
+   [`gSP.cpp`](../mupen64plus-video-gliden64/upstream/src/gSP.cpp) shears the combined matrix, driven
+   by the `StereoMode`, `StereoSeparation` and `StereoConvergence` config options and a per ROM
+   setting in the app. Super Mario 64's attract demo confirms it: the 3D scene shifts sideways and
+   the shift grows with distance, while the HUD and the "PRESS START" overlay stay on exactly the
+   same pixels, because screen space geometry never reaches the vertex transform. The hook point and
+   the 2D exclusion are both right.
 2. **Find out whether the list can be replayed.** Call the walk twice into two framebuffers with the
    side effects disabled, and see which games survive. This decides whether the idea is real.
-3. **Wire it into the VR layer** and add a convergence and separation setting, because the right
-   values differ per game.
+3. **Wire it into the VR layer** so each eye gets its own image instead of one shared shear.
 4. **Measure.** Two passes double the graphics cost. N64 emulation is cheap on a Quest 3, but
    framebuffer effects are not.
 
 Step 2 is where this lives or dies. Worth finding out early, before building anything around it.
+
+## What works today
+
+One eye at a time, as a per ROM setting under **Stereoscopic 3D (experimental)** in a game's
+settings: an eye, a separation and a convergence depth. Switching between the left and the right eye
+shows the parallax the finished feature would give each eye, but both eyes still see the same image,
+so there is no depth yet. It is a measuring tool for finding good separation and convergence values
+per game, not a feature to play with.
+
+Convergence is in the same units as the clip space w, which on the N64 is whatever scale the game
+chose for its world. A value that centres the depth in one game means nothing in another, which is
+why the setting is per ROM.

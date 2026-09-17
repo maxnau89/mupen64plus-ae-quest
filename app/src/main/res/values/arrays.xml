@@ -1367,4 +1367,14 @@
         <item>34</item>
     </string-array>
 
+    <string-array name="stereo3dMode_entries" translatable="false">
+        <item>@string/stereo3dMode_entryOff</item>
+        <item>@string/stereo3dMode_entryLeft</item>
+        <item>@string/stereo3dMode_entryRight</item>
+    </string-array>
+    <string-array name="stereo3dMode_values" translatable="false">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
 </resources>

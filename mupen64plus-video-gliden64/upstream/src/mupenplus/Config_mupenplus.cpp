@@ -290,6 +290,14 @@ bool Config_SetDefault()
 	res = ConfigSetDefaultFloat(g_configVideoGliden64, "GammaCorrectionLevel", config.gammaCorrection.level, "Gamma correction level.");
 	assert(res == M64ERR_SUCCESS);
 
+	//#Stereoscopic 3D settings (experimental)
+	res = ConfigSetDefaultInt(g_configVideoGliden64, "StereoMode", config.stereo.mode, "Experimental stereoscopic 3D: 0=off, 1=left eye, 2=right eye.");
+	assert(res == M64ERR_SUCCESS);
+	res = ConfigSetDefaultFloat(g_configVideoGliden64, "StereoSeparation", config.stereo.separation, "Eye separation for stereoscopic 3D.");
+	assert(res == M64ERR_SUCCESS);
+	res = ConfigSetDefaultFloat(g_configVideoGliden64, "StereoConvergence", config.stereo.convergence, "Depth that stays at zero parallax for stereoscopic 3D.");
+	assert(res == M64ERR_SUCCESS);
+
 	//#On screen display settings
 	res = ConfigSetDefaultBool(g_configVideoGliden64, "ShowFPS", config.onScreenDisplay.fps, "Show FPS counter.");
 	assert(res == M64ERR_SUCCESS);
@@ -601,6 +609,11 @@ void Config_LoadConfig()
 	//#Gamma correction settings
 	config.gammaCorrection.force = ConfigGetParamBool(g_configVideoGliden64, "ForceGammaCorrection");
 	config.gammaCorrection.level = ConfigGetParamFloat(g_configVideoGliden64, "GammaCorrectionLevel");
+
+	//#Stereoscopic 3D settings (experimental)
+	config.stereo.mode = ConfigGetParamInt(g_configVideoGliden64, "StereoMode");
+	config.stereo.separation = ConfigGetParamFloat(g_configVideoGliden64, "StereoSeparation");
+	config.stereo.convergence = ConfigGetParamFloat(g_configVideoGliden64, "StereoConvergence");
 
 	//#On screen display settings
 	config.onScreenDisplay.fps = ConfigGetParamBool(g_configVideoGliden64, "ShowFPS");

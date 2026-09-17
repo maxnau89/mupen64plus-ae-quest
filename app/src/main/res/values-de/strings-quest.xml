@@ -99,4 +99,14 @@
     <string name="questDock_menu">Menü</string>
     <string name="questDock_exit">Beenden</string>
     <string name="questDock_slot">Platz %1$d</string>
+    <string name="stereo3d_title">Stereoskopisches 3D (experimentell)</string>
+    <string name="stereo3d_summary">Die Szene aus einem versetzten Auge zeichnen. Unfertig, Fehler sind zu erwarten.</string>
+    <string name="stereo3dMode_title">Auge</string>
+    <string name="stereo3dMode_entryOff">Aus</string>
+    <string name="stereo3dMode_entryLeft">Linkes Auge</string>
+    <string name="stereo3dMode_entryRight">Rechtes Auge</string>
+    <string name="stereo3dSeparation_title">Augenabstand</string>
+    <string name="stereo3dSeparation_summary">Wie weit das Auge zur Seite rückt. In Tausendsteln einer Clip-Einheit.</string>
+    <string name="stereo3dConvergence_title">Konvergenztiefe</string>
+    <string name="stereo3dConvergence_summary">Tiefe, die stehen bleibt. Näheres kommt auf dich zu, Entfernteres weicht zurück.</string>
 </resources>

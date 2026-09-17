@@ -101,4 +101,15 @@
     <string name="questDock_menu">Menu</string>
     <string name="questDock_exit">Exit</string>
     <string name="questDock_slot">Slot %1$d</string>
+    <string name="stereo3d_title">Stereoscopic 3D (experimental)</string>
+    <string name="stereo3d_summary">Render the scene from a shifted eye. Unfinished, expect glitches.</string>
+    <string name="stereo3dMode_title">Eye</string>
+    <string name="stereo3dMode_default" translatable="false">0</string>
+    <string name="stereo3dMode_entryOff">Off</string>
+    <string name="stereo3dMode_entryLeft">Left eye</string>
+    <string name="stereo3dMode_entryRight">Right eye</string>
+    <string name="stereo3dSeparation_title">Eye separation</string>
+    <string name="stereo3dSeparation_summary">How far the eye moves aside. Thousandths of a clip unit.</string>
+    <string name="stereo3dConvergence_title">Convergence depth</string>
+    <string name="stereo3dConvergence_summary">Depth that stays put. Nearer geometry comes towards you, farther geometry recedes.</string>
 </resources>
