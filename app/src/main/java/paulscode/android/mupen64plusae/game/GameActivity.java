@@ -91,7 +91,7 @@ import paulscode.android.mupen64plusae.dialog.Prompt;
 import paulscode.android.mupen64plusae.input.PeripheralController;
 import paulscode.android.mupen64plusae.input.SensorController;
 import paulscode.android.mupen64plusae.game.xr.QuestN64Overlay;
-import paulscode.android.mupen64plusae.game.xr.QuestNetplayActivity;
+import paulscode.android.mupen64plusae.game.xr.QuestNetplayMenu;
 import paulscode.android.mupen64plusae.game.xr.QuestVrMenu;
 import paulscode.android.mupen64plusae.game.xr.QuestXr;
 import paulscode.android.mupen64plusae.input.AbstractController;
@@ -164,7 +164,7 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         NetplayClientSetupDialog.OnServerDialogActionListener,
         NetplayServerSetupDialog.OnClientDialogActionListener, NetplayFragment.NetplayListener,
         RetroAchievementsManager.GameLoadListener, QuestTouchController.SessionListener, QuestVrMenu.Host,
-        QuestNetplayActivity.Host
+        QuestNetplayMenu.Host
 {
     private static final String TAG = "GameActivity";
 
@@ -221,7 +221,7 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     private boolean mXrPassthroughSupported = false;
     private boolean mXrPassthrough = false;
     private boolean mXrAdjusting = false;
-    private boolean mXrNetplaySetupLaunched = false;
+    private QuestNetplayMenu mQuestNetplayMenu;
     private int mXrControllerMode = QuestN64Overlay.MODE_HANDS;
     // Game screen pose in the tracking space
     private float mXrScreenX = 0.0f;
@@ -915,7 +915,7 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
 
     private void updateXrQuads()
     {
-        final boolean menuOpen = mQuestVrMenu != null && mQuestVrMenu.isOpen();
+        final boolean menuOpen = (mQuestVrMenu != null && mQuestVrMenu.isOpen()) || isXrNetplayMenuOpen();
         final float screenHeight = mXrScreenSize / getXrGameAspect();
 
         // In passthrough the game gets rounded corners like a Horizon window
@@ -936,7 +936,7 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     @Override
     public void onXrMenuToggleRequested()
     {
-        if (mQuestVrMenu == null || mCoreFragment == null) {
+        if (mQuestVrMenu == null || mCoreFragment == null || isXrNetplayMenuOpen()) {
             return;
         }
         if (mQuestVrMenu.isOpen()) {
@@ -954,6 +954,10 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     @Override
     public void onXrMenuNavigate(int direction)
     {
+        if (isXrNetplayMenuOpen()) {
+            mQuestNetplayMenu.moveSelection(direction);
+            return;
+        }
         if (mQuestVrMenu != null && mQuestVrMenu.isOpen()) {
             mQuestVrMenu.moveSelection(direction);
         }
@@ -962,6 +966,10 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     @Override
     public void onXrMenuAdjust(int direction)
     {
+        if (isXrNetplayMenuOpen()) {
+            mQuestNetplayMenu.adjust(direction);
+            return;
+        }
         if (mQuestVrMenu != null && mQuestVrMenu.isOpen()) {
             mQuestVrMenu.adjust(direction);
         }
@@ -970,6 +978,10 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     @Override
     public void onXrMenuActivate()
     {
+        if (isXrNetplayMenuOpen()) {
+            mQuestNetplayMenu.activate();
+            return;
+        }
         if (mQuestVrMenu != null && mQuestVrMenu.isOpen()) {
             mQuestVrMenu.activate();
         }
@@ -978,6 +990,10 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     @Override
     public void onXrMenuBack()
     {
+        if (isXrNetplayMenuOpen()) {
+            mQuestNetplayMenu.back();
+            return;
+        }
         if (mQuestVrMenu != null && mQuestVrMenu.isOpen()) {
             mQuestVrMenu.back();
         }
@@ -1032,6 +1048,24 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         getSharedPreferences(XR_PREFS, MODE_PRIVATE).edit().putBoolean(XR_PREF_PASSTHROUGH, mXrPassthrough).apply();
         loadXrScreen();
         updateXrQuads();
+    }
+
+    private boolean isXrNetplayMenuOpen()
+    {
+        return mQuestNetplayMenu != null && mQuestNetplayMenu.isOpen();
+    }
+
+    @Override
+    public void onNetplayMenuClosed()
+    {
+        mQuestTouchController.setMenuOpen(false);
+        updateXrQuads();
+    }
+
+    @Override
+    public int getNetplayRoomPort()
+    {
+        return mGlobalPrefs.netplayRoomTcpPort;
     }
 
     @Override
@@ -1892,11 +1926,21 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     public void onNetplayReady()
     {
         if (mIsNetplayEnabled && mXrMode) {
-            // Dialogs are invisible in VR, set up the room in a 2D window instead
-            if (!mXrNetplaySetupLaunched) {
-                mXrNetplaySetupLaunched = true;
-                QuestNetplayActivity.launch(this, this, mIsNetplayServer, mRomMd5,
-                        mGamePrefs.videoPluginLib.getPluginLib(), mGamePrefs.rspPluginLib.getPluginLib(), mServerPort);
+            // Dialogs are invisible in VR, set up the room in the VR menu instead
+            if (mQuestNetplayMenu == null) {
+                mQuestNetplayMenu = new QuestNetplayMenu(QuestXr.getSurface(QuestXr.QUAD_MENU), XR_MENU_WIDTH,
+                        XR_MENU_HEIGHT, getResources(), this);
+                if (mQuestVrMenu.isOpen()) {
+                    mQuestVrMenu.close();
+                }
+                mQuestTouchController.setMenuOpen(true);
+                if (mIsNetplayServer) {
+                    mQuestNetplayMenu.openServer(this, mRomMd5, mGamePrefs.videoPluginLib.getPluginLib(),
+                            mGamePrefs.rspPluginLib.getPluginLib(), mServerPort);
+                } else {
+                    mQuestNetplayMenu.openClient(this, mRomMd5);
+                }
+                updateXrQuads();
             }
             return;
         }
@@ -2322,8 +2366,8 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         if (mIsNetplayServer && mNetplayServerDialog != null) {
             mNetplayServerDialog.onUpnpPortsObtained(tcpPort1, tcpPort2, udpPort2);
         }
-        if (mXrMode) {
-            QuestNetplayActivity.onUpnpPortsObtained(tcpPort1, tcpPort2, udpPort2);
+        if (mQuestNetplayMenu != null) {
+            mQuestNetplayMenu.onUpnpPortsObtained(tcpPort1, tcpPort2, udpPort2);
         }
     }
 }

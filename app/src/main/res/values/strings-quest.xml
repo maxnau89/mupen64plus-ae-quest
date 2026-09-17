@@ -26,4 +26,21 @@
     <string name="questMenu_adjustScreen">Adjust screen</string>
     <string name="questAdjust_title">Adjust screen</string>
     <string name="questAdjust_hint">Hold grip and move: position   Stick up/down: size   A/B: done</string>
+    <string name="questNetplay_titleHost">NetPlay: host</string>
+    <string name="questNetplay_titleJoin">NetPlay: join</string>
+    <string name="questNetplay_start">Start game</string>
+    <string name="questNetplay_getCode">Get online room code</string>
+    <string name="questNetplay_cancel">Cancel NetPlay</string>
+    <string name="questNetplay_cancelConfirm">Cancel NetPlay? Press again to confirm</string>
+    <string name="questNetplay_address">Address: %1$s   Port: %2$d</string>
+    <string name="questNetplay_code">Room code: %1$d</string>
+    <string name="questNetplay_requestingCode">Requesting room code…</string>
+    <string name="questNetplay_players">Players:</string>
+    <string name="questNetplay_searching">Searching for rooms on the local network…</string>
+    <string name="questNetplay_selectServer">Select a room:</string>
+    <string name="questNetplay_waiting">Joined. Waiting for the host to start…</string>
+    <string name="questNetplay_enterCode">Enter room code</string>
+    <string name="questNetplay_enterAddress">Enter address and port</string>
+    <string name="questNetplay_connecting">Connecting…</string>
+    <string name="questNetplay_hintEdit">Stick ▲▼: digit   ◀▶: position   A: connect   B: back</string>
 </resources>

@@ -25,4 +25,21 @@
     <string name="questMenu_adjustScreen">Bild anpassen</string>
     <string name="questAdjust_title">Bild anpassen</string>
     <string name="questAdjust_hint">Grip halten und bewegen: Position   Stick hoch/runter: Größe   A/B: fertig</string>
+    <string name="questNetplay_titleHost">NetPlay: Raum erstellen</string>
+    <string name="questNetplay_titleJoin">NetPlay: Beitreten</string>
+    <string name="questNetplay_start">Spiel starten</string>
+    <string name="questNetplay_getCode">Online-Raumcode anfordern</string>
+    <string name="questNetplay_cancel">NetPlay abbrechen</string>
+    <string name="questNetplay_cancelConfirm">NetPlay abbrechen? Zum Bestätigen erneut drücken</string>
+    <string name="questNetplay_address">Adresse: %1$s   Port: %2$d</string>
+    <string name="questNetplay_code">Raumcode: %1$d</string>
+    <string name="questNetplay_requestingCode">Raumcode wird angefordert…</string>
+    <string name="questNetplay_players">Spieler:</string>
+    <string name="questNetplay_searching">Suche Räume im lokalen Netzwerk…</string>
+    <string name="questNetplay_selectServer">Raum auswählen:</string>
+    <string name="questNetplay_waiting">Beigetreten. Warte auf den Start durch den Host…</string>
+    <string name="questNetplay_enterCode">Raumcode eingeben</string>
+    <string name="questNetplay_enterAddress">Adresse und Port eingeben</string>
+    <string name="questNetplay_connecting">Verbinde…</string>
+    <string name="questNetplay_hintEdit">Stick ▲▼: Ziffer   ◀▶: Stelle   A: verbinden   B: zurück</string>
 </resources>
