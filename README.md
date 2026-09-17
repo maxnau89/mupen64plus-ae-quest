@@ -113,6 +113,12 @@ Prerequisites: JDK 21, the Android SDK with NDK 26.1 and CMake 3.22.1, and `awk`
 Building the original 2D app for phones from this tree still works; the VR code is skipped on
 devices that are not a Quest.
 
+## Ideas
+
+[Real stereoscopic 3D](docs/stereo-3d.md) — giving N64 games a per-eye view they never had, the way
+Dolphin VR does for GameCube and Wii. Notes on where the hook points are and what would decide
+whether it works.
+
 ## Credits
 
 - [Mupen64Plus-AE](https://github.com/mupen64plus-ae/mupen64plus-ae) by Paul Lamb, littleguy77 and
