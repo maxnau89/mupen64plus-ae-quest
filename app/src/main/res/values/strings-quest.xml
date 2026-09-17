@@ -21,11 +21,11 @@
     <string name="questMenu_exitConfirm">Exit game? Confirm again</string>
     <string name="questMenu_on">On</string>
     <string name="questMenu_off">Off</string>
-    <string name="questMenu_hintNavigate">Stick or point: select   A or trigger: OK   B: back</string>
+    <string name="questMenu_hintNavigate">Stick or point to select  ·  A or trigger: OK  ·  B: back</string>
     <string name="questMenu_modelCredits" translatable="false">3D model: "N64 Controller" by Marshle (formerly CodySmith1), CC BY 4.0, modified</string>
     <string name="questMenu_adjustScreen">Adjust screen</string>
     <string name="questAdjust_title">Adjust screen</string>
-    <string name="questAdjust_hint">Hold grip and move: position   Stick up/down: size   A/B: done</string>
+    <string name="questAdjust_hint">Hold grip and move: position  ·  Stick up/down: size  ·  A/B: done</string>
     <string name="questNetplay_titleHost">NetPlay: host</string>
     <string name="questNetplay_titleJoin">NetPlay: join</string>
     <string name="questNetplay_start">Start game</string>

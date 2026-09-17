@@ -6,7 +6,8 @@ android {
     defaultConfig {
         minSdkVersion 28
         targetSdkVersion 36
-        versionCode = 249
-        versionName = "3.0.249 (beta)"
+        // Quest fork, based on Mupen64Plus-AE 3.0.249
+        versionCode = 250
+        versionName = "1.0 (Quest)"
     }
 }

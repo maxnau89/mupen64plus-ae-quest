@@ -10,7 +10,7 @@ are a real N64 controller, and a 3D controller model in your hands lights up as 
 Everything the original does — the Mupen64Plus core, save states, netplay, RetroAchievements,
 texture packs, shaders — still works. This fork adds the headset.
 
-![Library](docs/screenshots/library.png)
+![The library in the Horizon home environment](docs/screenshots/vr/library-in-room.jpg)
 
 ## What this fork adds
 
@@ -51,6 +51,16 @@ that are invisible in an immersive app.
 one click away instead of buried in a drawer.
 
 ## Screenshots
+
+Mario Kart 64 on a screen in the room, with the dock below it:
+
+![A game with the dock](docs/screenshots/vr/game-with-dock.jpg)
+
+The in-game menu opens beside the picture instead of on top of it, and a controller can point at it:
+
+![The in-game menu beside the picture](docs/screenshots/vr/game-menu.jpg)
+
+The library and every settings screen, captured from the panel:
 
 | | |
 |---|---|
