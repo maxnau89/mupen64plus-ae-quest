@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quest design system tokens (tokens/colors.css, tokens/spatial.css) -->
+<resources>
+    <color name="quest_accent">#00DFDF</color>
+    <color name="quest_text_primary">#EFEFEF</color>
+    <color name="quest_text_secondary">#9C9897</color>
+    <color name="quest_text_tertiary">#747273</color>
+    <color name="quest_slab_fill">#F0121212</color>
+    <color name="quest_slab_edge">#38EFEFEF</color>
+    <color name="quest_rail_fill">#59000000</color>
+    <color name="quest_panel_fill">#1C1C1C</color>
+    <color name="quest_panel_fill_raised">#242424</color>
+    <color name="quest_ray_hover">#1F00DFDF</color>
+    <color name="quest_surface_hover">#22808080</color>
+    <color name="quest_field">#151515</color>
+</resources>

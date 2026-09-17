@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- RailItem: selected = ray-hover tint with a 3dp accent bar, hovered = surface hover -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android" android:exitFadeDuration="120">
+    <item android:state_selected="true">
+        <layer-list>
+            <item><shape><solid android:color="@color/quest_ray_hover" /></shape></item>
+            <item android:gravity="start" android:width="3dp"><shape><solid android:color="@color/quest_accent" /></shape></item>
+        </layer-list>
+    </item>
+    <item android:state_hovered="true"><shape><solid android:color="@color/quest_surface_hover" /></shape></item>
+    <item android:state_pressed="true"><shape><solid android:color="@color/quest_surface_hover" /></shape></item>
+    <item android:state_focused="true"><shape><solid android:color="@color/quest_surface_hover" /></shape></item>
+    <item><shape><solid android:color="@android:color/transparent" /></shape></item>
+</selector>

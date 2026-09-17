@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quest design system spatial tokens, 1 design unit = 1dp -->
+<resources>
+    <dimen name="quest_slab_width">1180dp</dimen>
+    <dimen name="quest_slab_height">860dp</dimen>
+    <dimen name="quest_slab_inset">28dp</dimen>
+    <dimen name="quest_rail_width">104dp</dimen>
+    <dimen name="quest_hit_min">64dp</dimen>
+    <dimen name="quest_hit_comfort">72dp</dimen>
+    <dimen name="quest_gap_min">16dp</dimen>
+    <dimen name="quest_text_sm">16sp</dimen>
+    <dimen name="quest_text_base">20sp</dimen>
+    <dimen name="quest_text_md">24sp</dimen>
+    <dimen name="quest_text_lg">32sp</dimen>
+    <dimen name="quest_text_xl">44sp</dimen>
+    <dimen name="quest_search_width">380dp</dimen>
+    <dimen name="quest_hover_lift">-6dp</dimen>
+    <dimen name="quest_hover_elevation">10dp</dimen>
+</resources>

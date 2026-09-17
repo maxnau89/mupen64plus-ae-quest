@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:background="?attr/selectableItemBackground"
+    android:background="@drawable/quest_cover_background"
+    android:stateListAnimator="@animator/quest_hover_lift"
     android:focusable="true"
     android:id="@+id/galleryItem"
     android:layout_width="wrap_content"
@@ -27,7 +28,12 @@
             android:id="@+id/text1"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
             android:text="@string/galleryItemAdapter_dummyText"
-            android:textAppearance="?android:attr/textAppearanceSmall" />
+            android:maxLines="2"
+            android:ellipsize="end"
+            android:fontFamily="sans-serif"
+            android:textSize="@dimen/quest_text_sm"
+            android:textColor="@color/quest_text_primary" />
     </LinearLayout>
 </LinearLayout>

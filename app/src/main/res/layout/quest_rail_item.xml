@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- RailItem: icon over label, 72dp comfort target -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="@dimen/quest_hit_comfort"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:paddingTop="10dp"
+    android:paddingBottom="10dp"
+    android:paddingStart="4dp"
+    android:paddingEnd="4dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:background="@drawable/quest_rail_item_background">
+
+    <ImageView
+        android:id="@+id/railIcon"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:alpha="0.92"
+        android:importantForAccessibility="no" />
+
+    <TextView
+        android:id="@+id/railLabel"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:duplicateParentState="true"
+        style="@style/QuestRailLabel" />
+</LinearLayout>

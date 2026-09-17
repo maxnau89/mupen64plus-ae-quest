@@ -41,6 +41,10 @@ import android.view.KeyEvent;
 import android.view.MenuItem;
 import android.view.PointerIcon;
 import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+import android.widget.ImageView;
+import android.view.Menu;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 
@@ -475,6 +479,7 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         // Set up the header image in the navigation drawer
         mDrawerList.setImage(R.drawable.ouya_icon);
         mDrawerList.hideTitle();
+        setupQuestRail();
 
         //Remove touch screen profile configuration if in TV mode or on Meta Quest
         if(mGlobalPrefs.isBigScreenMode || QuestXr.isQuestDevice())
@@ -535,7 +540,7 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
                 floatingActionButton.setLayoutParams(params);
             }
 
-            DrawerLayout.LayoutParams params = (DrawerLayout.LayoutParams)coordLayout.getLayoutParams();
+            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams)coordLayout.getLayoutParams();
             params.topMargin = insets.getInsets(WindowInsetsCompat.Type.systemBars()).top;
             params.rightMargin = insets.getInsets(WindowInsetsCompat.Type.systemBars()).right;
             coordLayout.setLayoutParams(params);
@@ -1159,7 +1164,10 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         galleryAspectRatio = galleryMaxWidth * 1.0f
                 / getResources().getDimension( R.dimen.galleryImageHeight )/mGlobalPrefs.coverArtScale;
 
-        int widthPixels = mDrawerLayout.getWidth();
+        // The rail takes part of the window, measure the grid itself once it is laid out
+        int widthPixels = mGridView.getWidth() > 0 ?
+                mGridView.getWidth() - mGridView.getPaddingLeft() - mGridView.getPaddingRight() + galleryHalfSpacing * 2 :
+                mDrawerLayout.getWidth();
 
         int width = widthPixels - galleryHalfSpacing * 2;
         width = Math.max(width, galleryHalfSpacing*4);
@@ -1188,6 +1196,8 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         if (mGridView.getAdapter() != null) {
             mGridView.getAdapter().notifyDataSetChanged();
         }
+
+        updateQuestLibraryCount(galleryItems);
 
         if(galleryItems.size() > 0) {
             findViewById(R.id.gallery_empty_icon).setVisibility(View.INVISIBLE);
@@ -1266,6 +1276,69 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
     @Override
     public boolean onKey(View view, int i, KeyEvent keyEvent) {
         return false;
+    }
+
+    /** Quest rail: every top-level destination stays visible next to the library. */
+    private void setupQuestRail()
+    {
+        setupQuestRailItem(R.id.railLibrary, R.drawable.ic_controller, R.string.galleryLibrary, v -> {
+            mDrawerLayout.closeDrawer(GravityCompat.START);
+            if (mGridView.getLayoutManager() != null) {
+                mGridView.getLayoutManager().scrollToPosition(0);
+            }
+        });
+        setupQuestRailItem(R.id.railSettings, R.drawable.ic_settings, R.string.menuItem_settings,
+                v -> openQuestDrawerGroup(R.id.menuItem_settings));
+        setupQuestRailItem(R.id.railProfiles, R.drawable.ic_sliders, R.string.menuItem_profiles,
+                v -> openQuestDrawerGroup(R.id.menuItem_profiles));
+        setupQuestRailItem(R.id.railAddRoms, R.drawable.ic_refresh, R.string.quest_rail_addRoms,
+                this::onFabRefreshRomsClick);
+        setupQuestRailItem(R.id.railTools, R.drawable.ic_circuit, R.string.menuItem_Tools,
+                v -> openQuestDrawerGroup(R.id.menuItem_tools));
+        setupQuestRailItem(R.id.railAbout, R.drawable.ic_about, R.string.menuItem_about,
+                v -> openQuestDrawerGroup(R.id.menuItem_about));
+        findViewById(R.id.railLibrary).setSelected(true);
+    }
+
+    private void setupQuestRailItem(int id, int icon, int label, View.OnClickListener listener)
+    {
+        final View item = findViewById(id);
+        ((ImageView) item.findViewById(R.id.railIcon)).setImageResource(icon);
+        ((TextView) item.findViewById(R.id.railLabel)).setText(label);
+        item.setOnClickListener(listener);
+    }
+
+    /** Sections without their own screen yet open the drawer with just their group expanded. */
+    private void openQuestDrawerGroup(int groupId)
+    {
+        mGameSidebar.setVisibility(View.GONE);
+        mDrawerList.setVisibility(View.VISIBLE);
+        final Menu menu = mDrawerList.getMenu();
+        for (int i = 0; i < menu.size(); ++i) {
+            if (menu.getItem(i).getItemId() == groupId) {
+                mDrawerList.expandGroup(i);
+                mDrawerList.setSelection(i);
+            } else {
+                mDrawerList.collapseGroup(i);
+            }
+        }
+        mDrawerLayout.openDrawer(GravityCompat.START);
+    }
+
+    private void updateQuestLibraryCount(List<GalleryItem> shownItems)
+    {
+        final TextView subtitle = findViewById(R.id.questSubtitle);
+        if (subtitle == null) {
+            return;
+        }
+        int shown = 0;
+        for (GalleryItem item : shownItems) {
+            if (!item.isHeading) {
+                ++shown;
+            }
+        }
+        final int total = mAllItems != null && !mAllItems.isEmpty() ? mAllItems.size() : shown;
+        subtitle.setText(getString(R.string.quest_library_count, Math.min(shown, total), total));
     }
 
     public void onOpenDrawerButtonClicked(View view)

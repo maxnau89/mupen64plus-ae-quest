@@ -5,9 +5,10 @@
     <dimen name="inputMapPreferenceButtonSizeX1_5">60dp</dimen>
     <dimen name="inputMapPreferenceButtonSizeX3">120dp</dimen>
     <dimen name="inputMapPreferenceButtonSizeX5">200dp</dimen>
-    <dimen name="galleryImageWidth">175dp</dimen>
-    <dimen name="galleryImageHeight">121dp</dimen> <!-- galleryImageWidth * 177 / 256 -->
-    <dimen name="galleryTextHeight">50dp</dimen>
-    <dimen name="galleryHalfSpacing">5dp</dimen>
+    <!-- Quest: four columns inside the 1024dp scan band of the 1180dp slab -->
+    <dimen name="galleryImageWidth">240dp</dimen>
+    <dimen name="galleryImageHeight">166dp</dimen> <!-- galleryImageWidth * 177 / 256 -->
+    <dimen name="galleryTextHeight">56dp</dimen>
+    <dimen name="galleryHalfSpacing">8dp</dimen>
 
 </resources>

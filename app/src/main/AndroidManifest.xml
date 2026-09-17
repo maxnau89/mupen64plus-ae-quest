@@ -107,7 +107,10 @@
             android:exported="false"
             android:label="@string/GalleryActivity_title"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.Mupen64plusaeTheme.NoActionBar" />
+            android:theme="@style/Theme.Mupen64plusaeTheme.NoActionBar">
+            <!-- Meta Quest: panel sized to the design system slab (1180 x 860 design units) -->
+            <layout android:defaultWidth="@dimen/quest_slab_width" android:defaultHeight="@dimen/quest_slab_height" />
+        </activity>
         <activity
             android:name="paulscode.android.mupen64plusae.ScanRomsActivity"
             android:exported="false"

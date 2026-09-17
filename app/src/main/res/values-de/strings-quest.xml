@@ -42,4 +42,6 @@
     <string name="questNetplay_enterAddress">Adresse und Port eingeben</string>
     <string name="questNetplay_connecting">Verbinde…</string>
     <string name="questNetplay_hintEdit">Stick ▲▼: Ziffer   ◀▶: Stelle   A: verbinden   B: zurück</string>
+    <string name="quest_rail_addRoms">ROMs hinzufügen</string>
+    <string name="quest_library_count">%1$d von %2$d ROMs</string>
 </resources>
