@@ -103,7 +103,7 @@ adb install -r M64PlusQuest-1.0.apk
 
 ### ROMs
 
-Bring your own. Copy them to the headset — over USB, with SideQuest's file manager, or by cable
+Bring your own. Copy them to the headset — download them in the Quest Browser or transfer over USB, with SideQuest's file manager, or by cable
 from a phone — then open **Add ROMs** in the app and point it at the folder.
 
 ## Using it
