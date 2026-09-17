@@ -16,12 +16,12 @@
     <string name="questMenu_screenshotSaved">Screenshot saved</string>
     <string name="questMenu_resetScreen">Reset screen position</string>
     <string name="questMenu_reset">Reset game</string>
-    <string name="questMenu_resetConfirm">Reset game? Press A to confirm</string>
+    <string name="questMenu_resetConfirm">Reset game? Confirm again</string>
     <string name="questMenu_exit">Exit game</string>
-    <string name="questMenu_exitConfirm">Exit game? Press A to confirm</string>
+    <string name="questMenu_exitConfirm">Exit game? Confirm again</string>
     <string name="questMenu_on">On</string>
     <string name="questMenu_off">Off</string>
-    <string name="questMenu_hintNavigate">Stick: select   ◀▶: change   A: OK   B: back</string>
+    <string name="questMenu_hintNavigate">Stick or point: select   A or trigger: OK   B: back</string>
     <string name="questMenu_modelCredits" translatable="false">3D model: "N64 Controller" by Marshle (formerly CodySmith1), CC BY 4.0, modified</string>
     <string name="questMenu_adjustScreen">Adjust screen</string>
     <string name="questAdjust_title">Adjust screen</string>
@@ -87,4 +87,18 @@
     <string name="quest_scan_fileSummary">Add a single ROM file</string>
     <string name="quest_scan_pathSummary">Type a storage path by hand</string>
     <string name="quest_scan_optionsTitle">Scan options</string>
+    <string name="questMenu_title">Game menu</string>
+    <string name="questMenu_labelSave">Save state</string>
+    <string name="questMenu_labelLoad">Load state</string>
+    <string name="questMenu_labelSlot">Slot</string>
+    <string name="questMenu_labelPassthrough">Passthrough</string>
+    <string name="questMenu_labelController">Controller display</string>
+    <string name="questMenu_labelSpeed">Speed</string>
+    <string name="questMenu_labelFrameLimiter">Frame limiter</string>
+    <string name="questDock_save">Save</string>
+    <string name="questDock_load">Load</string>
+    <string name="questDock_screenshot">Photo</string>
+    <string name="questDock_menu">Menu</string>
+    <string name="questDock_exit">Exit</string>
+    <string name="questDock_slot">Slot %1$d</string>
 </resources>

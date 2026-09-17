@@ -16,12 +16,12 @@
     <string name="questMenu_screenshotSaved">Screenshot gespeichert</string>
     <string name="questMenu_resetScreen">Bildposition zurücksetzen</string>
     <string name="questMenu_reset">Spiel zurücksetzen</string>
-    <string name="questMenu_resetConfirm">Zurücksetzen? A zum Bestätigen</string>
+    <string name="questMenu_resetConfirm">Spiel zurücksetzen? Nochmal bestätigen</string>
     <string name="questMenu_exit">Spiel beenden</string>
-    <string name="questMenu_exitConfirm">Beenden? A zum Bestätigen</string>
+    <string name="questMenu_exitConfirm">Spiel beenden? Nochmal bestätigen</string>
     <string name="questMenu_on">An</string>
     <string name="questMenu_off">Aus</string>
-    <string name="questMenu_hintNavigate">Stick: Auswahl   ◀▶: ändern   A: OK   B: zurück</string>
+    <string name="questMenu_hintNavigate">Stick oder zeigen: auswählen   A oder Trigger: OK   B: zurück</string>
     <string name="questMenu_adjustScreen">Bild anpassen</string>
     <string name="questAdjust_title">Bild anpassen</string>
     <string name="questAdjust_hint">Grip halten und bewegen: Position   Stick hoch/runter: Größe   A/B: fertig</string>
@@ -85,4 +85,18 @@
     <string name="quest_scan_fileSummary">Eine einzelne ROM-Datei hinzufügen</string>
     <string name="quest_scan_pathSummary">Einen Speicherpfad von Hand eingeben</string>
     <string name="quest_scan_optionsTitle">Scan-Optionen</string>
+    <string name="questMenu_title">Spielmenü</string>
+    <string name="questMenu_labelSave">Spielstand speichern</string>
+    <string name="questMenu_labelLoad">Spielstand laden</string>
+    <string name="questMenu_labelSlot">Speicherplatz</string>
+    <string name="questMenu_labelPassthrough">Passthrough</string>
+    <string name="questMenu_labelController">Controller-Anzeige</string>
+    <string name="questMenu_labelSpeed">Geschwindigkeit</string>
+    <string name="questMenu_labelFrameLimiter">Bildratenbremse</string>
+    <string name="questDock_save">Speichern</string>
+    <string name="questDock_load">Laden</string>
+    <string name="questDock_screenshot">Foto</string>
+    <string name="questDock_menu">Menü</string>
+    <string name="questDock_exit">Beenden</string>
+    <string name="questDock_slot">Platz %1$d</string>
 </resources>

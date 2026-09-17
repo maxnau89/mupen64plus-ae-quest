@@ -17,8 +17,9 @@ import paulscode.android.mupen64plusae.R;
 import paulscode.android.mupen64plusae.jni.CoreFragment;
 
 /**
- * In-game menu for VR. It is drawn with a Canvas into the menu quad's Surface and driven by
- * Touch controller navigation events. All methods must be called on the main thread.
+ * In-game menu for VR, drawn with a Canvas into the menu quad's Surface in the Quest design system
+ * style. It is driven either by Touch controller navigation events or by pointing a controller at
+ * it. All methods must be called on the main thread.
  * <p>
  * The regular game sidebar can't be used in VR because the activity window is not shown and
  * most of its actions open dialogs.
@@ -26,6 +27,23 @@ import paulscode.android.mupen64plusae.jni.CoreFragment;
 public class QuestVrMenu
 {
     private static final String TAG = "QuestVrMenu";
+
+    // Design system tokens at menu scale (1 design unit = 1.9 px on the 1024 px wide quad)
+    private static final int PADDING = 56;
+    private static final int TITLE_BASELINE = 116;
+    private static final int SUBTITLE_BASELINE = 162;
+    private static final int DIVIDER_Y = 198;
+    private static final int LIST_TOP = 226;
+    private static final int ROW_HEIGHT = 88;
+    private static final int ROW_RADIUS = 16;
+    private static final int ACCENT = 0xFF00DFDF;
+    private static final int TEXT_PRIMARY = 0xFFEFEFEF;
+    private static final int TEXT_SECONDARY = 0xFF9C9897;
+    private static final int TEXT_TERTIARY = 0xFF747273;
+    private static final int SLAB_FILL = 0xF0121212;
+    private static final int SLAB_EDGE = 0x38EFEFEF;
+    private static final int ROW_SELECTED = 0x2600DFDF;
+    private static final int ROW_HOVER = 0x1AFFFFFF;
 
     public interface Host
     {
@@ -68,14 +86,19 @@ public class QuestVrMenu
 
     private final List<Item> mItems = new ArrayList<>();
     private int mSelected = 0;
+    private int mHovered = -1;
     private Item mPendingConfirm = null;
     private String mStatus = "";
     private boolean mOpen = false;
 
     private final Paint mBackgroundPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint mHighlightPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mEdgePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mRowPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mMarkerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mTitlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mSubtitlePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mValuePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mHintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mCreditsPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
@@ -90,16 +113,29 @@ public class QuestVrMenu
         mHost = host;
         mTitle = title != null ? title : "";
 
-        mBackgroundPaint.setColor(Color.argb(235, 20, 22, 28));
-        mHighlightPaint.setColor(Color.argb(255, 60, 110, 200));
-        mTitlePaint.setColor(Color.WHITE);
-        mTitlePaint.setTextSize(52);
-        mTitlePaint.setTypeface(Typeface.DEFAULT_BOLD);
-        mTextPaint.setColor(Color.WHITE);
-        mTextPaint.setTextSize(42);
-        mHintPaint.setColor(Color.argb(255, 170, 175, 185));
-        mHintPaint.setTextSize(30);
-        mCreditsPaint.setColor(Color.argb(255, 120, 124, 132));
+        final Typeface condensed = Typeface.create("sans-serif-condensed", Typeface.BOLD);
+        final Typeface medium = Typeface.create("sans-serif-medium", Typeface.NORMAL);
+
+        mBackgroundPaint.setColor(SLAB_FILL);
+        mEdgePaint.setColor(SLAB_EDGE);
+        mRowPaint.setColor(ROW_SELECTED);
+        mMarkerPaint.setColor(ACCENT);
+        mTitlePaint.setColor(TEXT_PRIMARY);
+        mTitlePaint.setTextSize(54);
+        mTitlePaint.setTypeface(condensed);
+        mTitlePaint.setLetterSpacing(0.06f);
+        mSubtitlePaint.setColor(TEXT_SECONDARY);
+        mSubtitlePaint.setTextSize(30);
+        mTextPaint.setColor(TEXT_PRIMARY);
+        mTextPaint.setTextSize(38);
+        mTextPaint.setTypeface(medium);
+        mValuePaint.setColor(ACCENT);
+        mValuePaint.setTextSize(36);
+        mValuePaint.setTypeface(medium);
+        mValuePaint.setTextAlign(Paint.Align.RIGHT);
+        mHintPaint.setColor(TEXT_TERTIARY);
+        mHintPaint.setTextSize(28);
+        mCreditsPaint.setColor(TEXT_TERTIARY);
         mCreditsPaint.setTextSize(22);
     }
 
@@ -117,6 +153,7 @@ public class QuestVrMenu
             }
         }
         mSelected = 0;
+        mHovered = -1;
         mPendingConfirm = null;
         mStatus = "";
         mOpen = true;
@@ -128,6 +165,7 @@ public class QuestVrMenu
     {
         if (mOpen) {
             mOpen = false;
+            mHovered = -1;
             mHost.onVrMenuClosed();
         }
     }
@@ -135,8 +173,54 @@ public class QuestVrMenu
     public void moveSelection(int direction)
     {
         mSelected = (mSelected + direction + mItems.size()) % mItems.size();
+        mHovered = -1;
         mPendingConfirm = null;
         draw();
+    }
+
+    /**
+     * A controller is aiming at the menu. u and v are 0..1 from the top left corner, or -1 when the
+     * ray left the menu.
+     */
+    public void pointAt(float u, float v)
+    {
+        final int row = rowAt(u, v);
+        if (row == mHovered) {
+            return;
+        }
+        mHovered = row;
+        if (row >= 0) {
+            mSelected = row;
+            mPendingConfirm = null;
+        }
+        draw();
+    }
+
+    /** The trigger was pressed while aiming at the menu. Returns false if the ray missed a row. */
+    public boolean clickAt(float u, float v)
+    {
+        final int row = rowAt(u, v);
+        if (row < 0) {
+            return false;
+        }
+        mSelected = row;
+        activate();
+        return true;
+    }
+
+    /** The item the given menu coordinates fall on, or -1. */
+    private int rowAt(float u, float v)
+    {
+        if (u < 0.0f || v < 0.0f) {
+            return -1;
+        }
+        final float x = u * mWidth;
+        final float y = v * mHeight;
+        if (x < PADDING - 16 || x > mWidth - PADDING + 16 || y < LIST_TOP) {
+            return -1;
+        }
+        final int row = (int) ((y - LIST_TOP) / ROW_HEIGHT);
+        return row >= 0 && row < mItems.size() ? row : -1;
     }
 
     public void adjust(int direction)
@@ -263,19 +347,19 @@ public class QuestVrMenu
             case RESUME:
                 return mResources.getString(R.string.questMenu_resume);
             case SAVE:
-                return mResources.getString(R.string.questMenu_save, mCoreFragment.getSlot());
+                return mResources.getString(R.string.questMenu_labelSave);
             case LOAD:
-                return mResources.getString(R.string.questMenu_load, mCoreFragment.getSlot());
+                return mResources.getString(R.string.questMenu_labelLoad);
             case SLOT:
-                return mResources.getString(R.string.questMenu_slot, mCoreFragment.getSlot());
+                return mResources.getString(R.string.questMenu_labelSlot);
             case PASSTHROUGH:
-                return mResources.getString(R.string.questMenu_passthrough, onOff(mHost.isPassthroughEnabled()));
+                return mResources.getString(R.string.questMenu_labelPassthrough);
             case CONTROLLER:
-                return mResources.getString(R.string.questMenu_controller, controllerModeLabel(mHost.getControllerMode()));
+                return mResources.getString(R.string.questMenu_labelController);
             case SPEED:
-                return mResources.getString(R.string.questMenu_speed, mCoreFragment.getCurrentSpeed());
+                return mResources.getString(R.string.questMenu_labelSpeed);
             case FRAME_LIMITER:
-                return mResources.getString(R.string.questMenu_frameLimiter, onOff(mCoreFragment.getFramelimiter()));
+                return mResources.getString(R.string.questMenu_labelFrameLimiter);
             case SCREENSHOT:
                 return mResources.getString(R.string.questMenu_screenshot);
             case ADJUST_SCREEN:
@@ -283,11 +367,34 @@ public class QuestVrMenu
             case RESET_SCREEN:
                 return mResources.getString(R.string.questMenu_resetScreen);
             case RESET:
-                return mResources.getString(mPendingConfirm == item ? R.string.questMenu_resetConfirm : R.string.questMenu_reset);
+                return mResources.getString(mPendingConfirm == item
+                        ? R.string.questMenu_resetConfirm : R.string.questMenu_reset);
             case EXIT:
-                return mResources.getString(mPendingConfirm == item ? R.string.questMenu_exitConfirm : R.string.questMenu_exit);
+                return mResources.getString(mPendingConfirm == item
+                        ? R.string.questMenu_exitConfirm : R.string.questMenu_exit);
             default:
                 return item.name();
+        }
+    }
+
+    /** The right hand side of a row, empty when the item has no value. */
+    private String value(Item item)
+    {
+        switch (item) {
+            case SAVE:
+            case LOAD:
+            case SLOT:
+                return String.valueOf(mCoreFragment.getSlot());
+            case PASSTHROUGH:
+                return onOff(mHost.isPassthroughEnabled());
+            case CONTROLLER:
+                return controllerModeLabel(mHost.getControllerMode());
+            case SPEED:
+                return mCoreFragment.getCurrentSpeed() + " %";
+            case FRAME_LIMITER:
+                return onOff(mCoreFragment.getFramelimiter());
+            default:
+                return "";
         }
     }
 
@@ -307,32 +414,49 @@ public class QuestVrMenu
 
         try {
             canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-            canvas.drawRoundRect(new RectF(0, 0, mWidth, mHeight), 36, 36, mBackgroundPaint);
+            canvas.drawRoundRect(new RectF(0, 0, mWidth, mHeight), 28, 28, mBackgroundPaint);
 
-            final float padding = 48;
-            float y = padding + 52;
-            canvas.drawText(ellipsize(mTitle, mTitlePaint, mWidth - 2 * padding), padding, y, mTitlePaint);
-            y += 36;
+            final float textRight = mWidth - PADDING;
+            canvas.drawText(ellipsize(mResources.getString(R.string.questMenu_title).toUpperCase(),
+                    mTitlePaint, mWidth - 2 * PADDING), PADDING, TITLE_BASELINE, mTitlePaint);
+            canvas.drawText(ellipsize(mTitle, mSubtitlePaint, mWidth - 2 * PADDING),
+                    PADDING, SUBTITLE_BASELINE, mSubtitlePaint);
+            canvas.drawRect(PADDING, DIVIDER_Y, textRight, DIVIDER_Y + 1, mEdgePaint);
 
-            final float rowHeight = 74;
             for (int i = 0; i < mItems.size(); ++i) {
-                final float top = y + i * rowHeight;
+                final Item item = mItems.get(i);
+                final float top = LIST_TOP + i * ROW_HEIGHT;
                 if (i == mSelected) {
-                    canvas.drawRoundRect(new RectF(padding - 16, top, mWidth - padding + 16, top + rowHeight - 8),
-                            18, 18, mHighlightPaint);
+                    mRowPaint.setColor(ROW_SELECTED);
+                    canvas.drawRoundRect(new RectF(PADDING - 16, top + 3, textRight + 16, top + ROW_HEIGHT - 3),
+                            ROW_RADIUS, ROW_RADIUS, mRowPaint);
+                    canvas.drawRoundRect(new RectF(PADDING - 16, top + 14, PADDING - 11, top + ROW_HEIGHT - 14),
+                            3, 3, mMarkerPaint);
+                } else if (i == mHovered) {
+                    mRowPaint.setColor(ROW_HOVER);
+                    canvas.drawRoundRect(new RectF(PADDING - 16, top + 3, textRight + 16, top + ROW_HEIGHT - 3),
+                            ROW_RADIUS, ROW_RADIUS, mRowPaint);
                 }
-                canvas.drawText(ellipsize(label(mItems.get(i)), mTextPaint, mWidth - 2 * padding),
-                        padding, top + rowHeight - 30, mTextPaint);
+
+                final String valueText = value(item);
+                final float valueWidth = valueText.isEmpty() ? 0 : mValuePaint.measureText(valueText) + 24;
+                final float baseline = top + ROW_HEIGHT / 2.0f + 13;
+                canvas.drawText(ellipsize(label(item), mTextPaint, textRight - PADDING - valueWidth),
+                        PADDING + 8, baseline, mTextPaint);
+                if (!valueText.isEmpty()) {
+                    canvas.drawText(valueText, textRight - 8, baseline, mValuePaint);
+                }
             }
 
-            final float footer = mHeight - padding;
-            canvas.drawText(mResources.getString(R.string.questMenu_hintNavigate), padding, footer, mHintPaint);
-            if (!mStatus.isEmpty()) {
-                canvas.drawText(mStatus, padding, footer - 44, mHintPaint);
-            }
+            float footer = mHeight - PADDING;
             if (mHost.getControllerMode() == QuestN64Overlay.MODE_HANDS) {
                 canvas.drawText(ellipsize(mResources.getString(R.string.questMenu_modelCredits), mCreditsPaint,
-                        mWidth - 2 * padding), padding, mHeight - 14, mCreditsPaint);
+                        mWidth - 2 * PADDING), PADDING, mHeight - 18, mCreditsPaint);
+            }
+            canvas.drawText(ellipsize(mResources.getString(R.string.questMenu_hintNavigate), mHintPaint,
+                    mWidth - 2 * PADDING), PADDING, footer, mHintPaint);
+            if (!mStatus.isEmpty()) {
+                canvas.drawText(mStatus, PADDING, footer - 42, mHintPaint);
             }
         } finally {
             mSurface.unlockCanvasAndPost(canvas);
@@ -354,11 +478,12 @@ public class QuestVrMenu
         }
         try {
             canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
-            final float top = mHeight - 190;
-            canvas.drawRoundRect(new RectF(0, top, mWidth, mHeight), 36, 36, mBackgroundPaint);
-            canvas.drawText(mResources.getString(R.string.questAdjust_title), 48, top + 70, mTitlePaint);
-            canvas.drawText(ellipsize(mResources.getString(R.string.questAdjust_hint), mHintPaint, mWidth - 96),
-                    48, top + 140, mHintPaint);
+            final float top = mHeight - 210;
+            canvas.drawRoundRect(new RectF(0, top, mWidth, mHeight), 28, 28, mBackgroundPaint);
+            canvas.drawText(mResources.getString(R.string.questAdjust_title).toUpperCase(),
+                    PADDING, top + 80, mTitlePaint);
+            canvas.drawText(ellipsize(mResources.getString(R.string.questAdjust_hint), mHintPaint,
+                    mWidth - 2 * PADDING), PADDING, top + 142, mHintPaint);
         } finally {
             mSurface.unlockCanvasAndPost(canvas);
         }

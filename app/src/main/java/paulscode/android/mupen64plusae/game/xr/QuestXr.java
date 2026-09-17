@@ -49,7 +49,8 @@ public class QuestXr
     public static final int QUAD_GAME = 0;
     public static final int QUAD_MENU = 1;
     public static final int QUAD_CONTROLLER = 2;
-    private static final int QUAD_COUNT = 3;
+    public static final int QUAD_DOCK = 3;
+    private static final int QUAD_COUNT = 4;
 
     // Quad attach modes, must match quest_xr.cpp
     /** Position and yaw in the tracking space */
@@ -69,6 +70,12 @@ public class QuestXr
 
         /** The game screen was grabbed and released at a new pose. */
         void onXrScreenMoved(float x, float y, float z, float yaw, float width);
+
+        /**
+         * A controller is aiming at a pointable quad. u and v are 0..1 from its top left corner;
+         * quad is -1 with u and v at -1 when nothing is hit.
+         */
+        void onXrPointer(int quad, float u, float v, boolean pressed);
     }
 
     private static boolean sLibraryLoaded = false;
@@ -94,21 +101,23 @@ public class QuestXr
     }
 
     /**
-     * Create the XR session with game, menu and controller quads of the given pixel sizes.
+     * Create the XR session with game, menu, controller and dock quads of the given pixel sizes.
      * @return False if XR is unavailable
      */
     public static boolean create(Activity activity, Listener listener, int gameWidth, int gameHeight,
-                                 int menuWidth, int menuHeight, int controllerWidth, int controllerHeight)
+                                 int menuWidth, int menuHeight, int controllerWidth, int controllerHeight,
+                                 int dockWidth, int dockHeight)
     {
         if (!isQuestDevice() || !loadLibrary()) {
             return false;
         }
         if (!nativeCreate(activity, listener, gameWidth, gameHeight, menuWidth, menuHeight,
-                controllerWidth, controllerHeight)) {
+                controllerWidth, controllerHeight, dockWidth, dockHeight)) {
             return false;
         }
 
-        final int[][] sizes = {{gameWidth, gameHeight}, {menuWidth, menuHeight}, {controllerWidth, controllerHeight}};
+        final int[][] sizes = {{gameWidth, gameHeight}, {menuWidth, menuHeight},
+                {controllerWidth, controllerHeight}, {dockWidth, dockHeight}};
         for (int quad = 0; quad < QUAD_COUNT; ++quad) {
             // Created detached; the native frame thread attaches it to its own GL context
             sTextures[quad] = new SurfaceTexture(false);
@@ -209,6 +218,14 @@ public class QuestXr
         }
     }
 
+    /** While enabled, aiming a controller at the menu quad is reported through onXrPointer. */
+    public static void setPointerEnabled(boolean enabled)
+    {
+        if (sLibraryLoaded) {
+            nativeSetPointerEnabled(enabled);
+        }
+    }
+
     /** While enabled, holding a grip moves the game screen with that controller. */
     public static void setGrabEnabled(boolean enabled)
     {
@@ -252,13 +269,14 @@ public class QuestXr
 
     private static native boolean nativeCreate(Activity activity, Listener listener, int gameWidth, int gameHeight,
                                                int menuWidth, int menuHeight, int controllerWidth,
-                                               int controllerHeight);
+                                               int controllerHeight, int dockWidth, int dockHeight);
     private static native void nativeSetSourceTexture(int quad, SurfaceTexture texture);
     private static native void nativeSetQuad(int quad, boolean visible, int attach, float x, float y, float z,
                                              float yaw, float width, boolean blendAlpha, float cornerRadius,
                                              boolean opaqueSource);
     private static native void nativeSetStickResizeEnabled(boolean enabled);
     private static native void nativeSetGrabEnabled(boolean enabled);
+    private static native void nativeSetPointerEnabled(boolean enabled);
     private static native boolean nativeSetControllerModel(ByteBuffer mesh, Bitmap texture);
     private static native void nativeSetN64State(int buttons, float axisX, float axisY);
     private static native void nativeSetController3dVisible(boolean visible);

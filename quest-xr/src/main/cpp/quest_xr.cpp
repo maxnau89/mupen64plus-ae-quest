@@ -50,11 +50,12 @@ enum QuadId {
     QUAD_GAME = 0,
     QUAD_MENU = 1,
     QUAD_CONTROLLER = 2,
+    QUAD_DOCK = 3,
     QUAD_COUNT
 };
 
-// Back to front; the 3D controller is drawn between the 2D controller and the menu
-const QuadId kQuadOrder[QUAD_COUNT] = {QUAD_GAME, QUAD_CONTROLLER, QUAD_MENU};
+// Back to front; the projection layer with the 3D controller and the ray is submitted after these
+const QuadId kQuadOrder[QUAD_COUNT] = {QUAD_GAME, QUAD_CONTROLLER, QUAD_DOCK, QUAD_MENU};
 
 // How a quad's pose is interpreted, must match QuestXr.java
 enum Attach {
@@ -70,6 +71,7 @@ enum ActionId {
     ACT_LTRIGGER, ACT_RTRIGGER, ACT_LGRIP, ACT_RGRIP,
     ACT_A, ACT_B, ACT_X, ACT_Y, ACT_MENU, ACT_LSTICK_CLICK, ACT_RSTICK_CLICK,
     ACT_LPOSE, ACT_RPOSE,
+    ACT_LAIM, ACT_RAIM,
     ACT_COUNT
 };
 
@@ -95,6 +97,8 @@ const ActionDef kActions[ACT_COUNT] = {
     {"right_stick_click", XR_ACTION_TYPE_BOOLEAN_INPUT, "/user/hand/right/input/thumbstick/click"},
     {"left_pose", XR_ACTION_TYPE_POSE_INPUT, "/user/hand/left/input/grip/pose"},
     {"right_pose", XR_ACTION_TYPE_POSE_INPUT, "/user/hand/right/input/grip/pose"},
+    {"left_aim", XR_ACTION_TYPE_POSE_INPUT, "/user/hand/left/input/aim/pose"},
+    {"right_aim", XR_ACTION_TYPE_POSE_INPUT, "/user/hand/right/input/aim/pose"},
 };
 
 struct QuadSettings {
@@ -159,8 +163,20 @@ struct XrState {
     XrActionSet actionSet = XR_NULL_HANDLE;
     XrAction actions[ACT_COUNT] = {};
     XrSpace handSpaces[HAND_COUNT] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
+    XrSpace aimSpaces[HAND_COUNT] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
     XrSpace viewSpace = XR_NULL_HANDLE;
     jmethodID onScreenMoved = nullptr;
+    jmethodID onPointer = nullptr;
+
+    // Pointer ray at the menu quad, only while pointing is enabled
+    std::atomic<bool> pointerEnabled{false};
+    bool pointerHit = false;          // frame thread only
+    XrVector3f pointerFrom = {};
+    XrVector3f pointerTo = {};
+    int lastPointerQuad = -1;
+    float lastPointerU = -1.0f;
+    float lastPointerV = -1.0f;
+    bool lastPointerPressed = false;
 
     InputState input;
 
@@ -173,6 +189,9 @@ struct XrState {
     XrSwapchain eyeSwapchains[2] = {XR_NULL_HANDLE, XR_NULL_HANDLE};
     std::vector<XrSwapchainImageOpenGLESKHR> eyeImages[2];
     GLuint depthBuffer = 0;
+    GLuint rayProgram = 0;
+    GLint rayViewProjectionLocation = -1;
+    GLint rayColorLocation = -1;
     questxr::ControllerModel controllerModel;
     questxr::ControllerAsset controllerAsset;  // set from Java before the frame thread starts
     bool controllerReady = false;
@@ -336,11 +355,16 @@ bool createActions(XrState& xr) {
     }
 
     const ActionId poseActions[HAND_COUNT] = {ACT_LPOSE, ACT_RPOSE};
+    const ActionId aimActions[HAND_COUNT] = {ACT_LAIM, ACT_RAIM};
     for (int hand = 0; hand < HAND_COUNT; ++hand) {
         XrActionSpaceCreateInfo spaceInfo{XR_TYPE_ACTION_SPACE_CREATE_INFO};
-        spaceInfo.action = xr.actions[poseActions[hand]];
         spaceInfo.poseInActionSpace = {{0.0f, 0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 0.0f}};
+        spaceInfo.action = xr.actions[poseActions[hand]];
         if (!check(xrCreateActionSpace(xr.session, &spaceInfo, &xr.handSpaces[hand]), "xrCreateActionSpace")) {
+            return false;
+        }
+        spaceInfo.action = xr.actions[aimActions[hand]];
+        if (!check(xrCreateActionSpace(xr.session, &spaceInfo, &xr.aimSpaces[hand]), "xrCreateActionSpace(aim)")) {
             return false;
         }
     }
@@ -741,6 +765,8 @@ bool locate(XrState& xr, XrSpace space, XrTime time, XrPosef& pose) {
 }
 
 XrVector3f add(const XrVector3f& a, const XrVector3f& b) { return {a.x + b.x, a.y + b.y, a.z + b.z}; }
+XrVector3f scale(const XrVector3f& v, float f) { return {v.x * f, v.y * f, v.z * f}; }
+float dot(const XrVector3f& a, const XrVector3f& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 XrVector3f sub(const XrVector3f& a, const XrVector3f& b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
 
 // Rotates v around +Y by yaw
@@ -920,18 +946,211 @@ bool controllerMatrix(const XrPosef* hands[HAND_COUNT], float* model) {
     return true;
 }
 
-// Renders the 3D controller into both eye swapchains. Returns false if nothing was rendered.
+// A quad the pointer ray can hit, in world space
+struct PointerTarget {
+    int quad;
+    XrPosef pose;
+    float width;
+    float height;
+};
+
+// Intersects the aim rays with the pointable quads and reports the hit to Java. Targets are tested
+// front to back and the right hand goes first, so the menu can be pointed at with either controller.
+void updatePointer(JNIEnv* env, XrState& xr, XrTime time, const PointerTarget* targets, int targetCount) {
+    xr.pointerHit = false;
+    if (!xr.pointerEnabled.load()) {
+        targetCount = 0;
+    }
+
+    int quad = -1;
+    float u = -1.0f, v = -1.0f;
+    bool pressed = false;
+    for (int i = 0; i < HAND_COUNT && quad < 0; ++i) {
+        const int hand = i == 0 ? HAND_RIGHT : HAND_LEFT;
+        XrPosef aim;
+        if (targetCount == 0 || !locate(xr, xr.aimSpaces[hand], time, aim)) {
+            continue;
+        }
+        const XrVector3f origin = aim.position;
+        const XrVector3f direction = questxr::rotateVector(aim.orientation, {0.0f, 0.0f, -1.0f});
+
+        for (int t = 0; t < targetCount; ++t) {
+            const PointerTarget& target = targets[t];
+            const XrVector3f right = questxr::rotateVector(target.pose.orientation, {1.0f, 0.0f, 0.0f});
+            const XrVector3f up = questxr::rotateVector(target.pose.orientation, {0.0f, 1.0f, 0.0f});
+            const XrVector3f normal = questxr::rotateVector(target.pose.orientation, {0.0f, 0.0f, 1.0f});
+            const float denominator = dot(direction, normal);
+            if (std::fabs(denominator) < 1e-4f) {
+                continue;
+            }
+            const float distance = dot(sub(target.pose.position, origin), normal) / denominator;
+            if (distance <= 0.0f || distance > 12.0f) {
+                continue;
+            }
+            const XrVector3f point = add(origin, scale(direction, distance));
+            const XrVector3f local = sub(point, target.pose.position);
+            const float x = dot(local, right) / target.width + 0.5f;
+            const float y = 0.5f - dot(local, up) / target.height;
+            if (x < 0.0f || x > 1.0f || y < 0.0f || y > 1.0f) {
+                continue;
+            }
+            quad = target.quad;
+            u = x;
+            v = y;
+            pressed = xr.input.triggers[hand] > 0.5f;
+            xr.pointerHit = true;
+            xr.pointerFrom = origin;
+            xr.pointerTo = point;
+            break;
+        }
+    }
+
+    const bool changed = quad != xr.lastPointerQuad || pressed != xr.lastPointerPressed ||
+                         std::fabs(u - xr.lastPointerU) > 0.002f || std::fabs(v - xr.lastPointerV) > 0.002f;
+    if (!changed) {
+        return;
+    }
+    xr.lastPointerQuad = quad;
+    xr.lastPointerPressed = pressed;
+    xr.lastPointerU = u;
+    xr.lastPointerV = v;
+    env->CallVoidMethod(xr.listener, xr.onPointer, quad, u, v, pressed ? JNI_TRUE : JNI_FALSE);
+    clearException(env, "onXrPointer");
+}
+
+// A thin beam from the controller to the point it aims at, plus a dot on the menu.
+bool initRayGl(XrState& xr) {
+    if (xr.rayProgram != 0) {
+        return true;
+    }
+    const char* vertex = R"(#version 300 es
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in float aFade;
+uniform mat4 uViewProjection;
+out float vFade;
+void main() {
+    gl_Position = uViewProjection * vec4(aPosition, 1.0);
+    vFade = aFade;
+}
+)";
+    const char* fragment = R"(#version 300 es
+precision mediump float;
+in float vFade;
+uniform vec4 uColor;
+out vec4 fragColor;
+void main() {
+    fragColor = vec4(uColor.rgb, uColor.a * vFade);
+}
+)";
+    const GLuint vs = compileShader(GL_VERTEX_SHADER, vertex);
+    const GLuint fs = compileShader(GL_FRAGMENT_SHADER, fragment);
+    if (vs == 0 || fs == 0) {
+        return false;
+    }
+    xr.rayProgram = glCreateProgram();
+    glAttachShader(xr.rayProgram, vs);
+    glAttachShader(xr.rayProgram, fs);
+    glLinkProgram(xr.rayProgram);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    GLint linked = GL_FALSE;
+    glGetProgramiv(xr.rayProgram, GL_LINK_STATUS, &linked);
+    if (linked != GL_TRUE) {
+        LOGE("Ray program did not link");
+        glDeleteProgram(xr.rayProgram);
+        xr.rayProgram = 0;
+        return false;
+    }
+    xr.rayViewProjectionLocation = glGetUniformLocation(xr.rayProgram, "uViewProjection");
+    xr.rayColorLocation = glGetUniformLocation(xr.rayProgram, "uColor");
+    return true;
+}
+
+void drawRay(XrState& xr, const float* viewProjection, const XrVector3f& eye) {
+    if (!initRayGl(xr)) {
+        return;
+    }
+    // The beam is a ribbon that always faces the eye, so it stays visible from any angle
+    XrVector3f along = sub(xr.pointerTo, xr.pointerFrom);
+    const float length = std::sqrt(dot(along, along));
+    if (length < 0.02f) {
+        return;
+    }
+    along = scale(along, 1.0f / length);
+    XrVector3f toEye = sub(eye, xr.pointerFrom);
+    XrVector3f side = {along.y * toEye.z - along.z * toEye.y, along.z * toEye.x - along.x * toEye.z,
+                       along.x * toEye.y - along.y * toEye.x};
+    const float sideLength = std::sqrt(dot(side, side));
+    if (sideLength < 1e-5f) {
+        return;
+    }
+    side = scale(side, 1.0f / sideLength);
+
+    const XrVector3f nearSide = scale(side, 0.0015f);
+    const XrVector3f farSide = scale(side, 0.004f);
+    const XrVector3f& a = xr.pointerFrom;
+    const XrVector3f& b = xr.pointerTo;
+    const float beam[] = {
+        a.x - nearSide.x, a.y - nearSide.y, a.z - nearSide.z, 0.0f,
+        a.x + nearSide.x, a.y + nearSide.y, a.z + nearSide.z, 0.0f,
+        b.x - farSide.x, b.y - farSide.y, b.z - farSide.z, 1.0f,
+        b.x + farSide.x, b.y + farSide.y, b.z + farSide.z, 1.0f,
+    };
+
+    // A dot where the beam meets the menu
+    const XrVector3f dotSide = scale(side, 0.011f);
+    XrVector3f dotUp = {side.y * along.z - side.z * along.y, side.z * along.x - side.x * along.z,
+                        side.x * along.y - side.y * along.x};
+    dotUp = scale(dotUp, 0.011f);
+    const XrVector3f offset = scale(along, -0.004f);  // just in front of the quad
+    const XrVector3f c = add(b, offset);
+    const float dotStrip[] = {
+        c.x - dotSide.x - dotUp.x, c.y - dotSide.y - dotUp.y, c.z - dotSide.z - dotUp.z, 1.0f,
+        c.x + dotSide.x - dotUp.x, c.y + dotSide.y - dotUp.y, c.z + dotSide.z - dotUp.z, 1.0f,
+        c.x - dotSide.x + dotUp.x, c.y - dotSide.y + dotUp.y, c.z - dotSide.z + dotUp.z, 1.0f,
+        c.x + dotSide.x + dotUp.x, c.y + dotSide.y + dotUp.y, c.z + dotSide.z + dotUp.z, 1.0f,
+    };
+
+    glUseProgram(xr.rayProgram);
+    glUniformMatrix4fv(xr.rayViewProjectionLocation, 1, GL_FALSE, viewProjection);
+    glEnable(GL_BLEND);
+    glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_DEPTH_TEST);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+
+    // Design system accent
+    glUniform4f(xr.rayColorLocation, 0.0f, 0.874f, 0.874f, 0.75f);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(float), beam);
+    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 4 * sizeof(float), beam + 3);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    glUniform4f(xr.rayColorLocation, 0.0f, 0.874f, 0.874f, 0.95f);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4 * sizeof(float), dotStrip);
+    glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 4 * sizeof(float), dotStrip + 3);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+    glDisable(GL_BLEND);
+}
+
+// Renders the 3D controller and the pointer ray into both eye swapchains.
+// Returns false if nothing was rendered.
 bool renderController(XrState& xr, XrTime time, const XrPosef* hands[HAND_COUNT],
                       XrCompositionLayerProjectionView views[2]) {
     float model[16];
-    if (!xr.controller3dVisible || xr.eyeSwapchains[0] == XR_NULL_HANDLE || !controllerMatrix(hands, model)) {
+    const bool drawController = xr.controller3dVisible && controllerMatrix(hands, model);
+    if (xr.eyeSwapchains[0] == XR_NULL_HANDLE || (!drawController && !xr.pointerHit)) {
         return false;
     }
 
-    if (!xr.controllerReady) {
+    if (drawController && !xr.controllerReady) {
         if (!xr.controllerModel.init(xr.controllerAsset)) {
             xr.controller3dVisible = false;
-            return false;
+            if (!xr.pointerHit) {
+                return false;
+            }
         }
         glGenRenderbuffers(1, &xr.depthBuffer);
         glBindRenderbuffer(GL_RENDERBUFFER, xr.depthBuffer);
@@ -986,9 +1205,14 @@ bool renderController(XrState& xr, XrTime time, const XrPosef* hands[HAND_COUNT]
         questxr::matrixView(eyeViews[eye].pose, view);
         questxr::matrixProjection(eyeViews[eye].fov, 0.05f, 100.0f, projection);
         questxr::matrixMultiply(projection, view, viewProjection);
-        xr.controllerModel.draw(viewProjection, model, state, 0.85f);
-
+        if (drawController && xr.controllerReady) {
+            xr.controllerModel.draw(viewProjection, model, state, 0.85f);
+        }
         glDisable(GL_DEPTH_TEST);
+        if (xr.pointerHit) {
+            drawRay(xr, viewProjection, eyeViews[eye].pose.position);
+        }
+
         glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, 0);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -1084,6 +1308,34 @@ void renderFrame(XrState& xr, JNIEnv* env) {
         }
     }
 
+    {
+        // The quads the ray can hit, front to back; their poses are needed before the layers are built
+        const QuadId pointable[] = {QUAD_MENU, QUAD_DOCK};
+        PointerTarget targets[2];
+        int targetCount = 0;
+        for (QuadId id : pointable) {
+            if (!settings[id].visible) {
+                continue;
+            }
+            int32_t pixelWidth, pixelHeight;
+            {
+                std::lock_guard<std::mutex> lock(xr.quadMutex);
+                pixelWidth = xr.quads[id].width;
+                pixelHeight = xr.quads[id].height;
+            }
+            PointerTarget& target = targets[targetCount];
+            target.quad = id;
+            target.width = settings[id].width;
+            target.height = pixelWidth > 0
+                    ? target.width * static_cast<float>(pixelHeight) / static_cast<float>(pixelWidth)
+                    : target.width;
+            if (quadPose(settings[id], settings[QUAD_GAME], hands, head, target.pose)) {
+                ++targetCount;
+            }
+        }
+        updatePointer(env, xr, time, targets, targetCount);
+    }
+
     XrCompositionLayerPassthroughFB passthroughLayer{XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
     XrCompositionLayerQuad quadLayers[QUAD_COUNT];
     XrCompositionLayerProjection projectionLayer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
@@ -1102,15 +1354,6 @@ void renderFrame(XrState& xr, JNIEnv* env) {
         }
 
         for (QuadId i : kQuadOrder) {
-            if (i == QUAD_MENU && xr.glReady && renderController(xr, time, hands, projectionViews)) {
-                projectionLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
-                                             XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
-                projectionLayer.space = xr.space;
-                projectionLayer.viewCount = 2;
-                projectionLayer.views = projectionViews;
-                layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&projectionLayer);
-            }
-
             Quad& quad = xr.quads[i];
             if (!settings[i].visible) {
                 continue;
@@ -1136,6 +1379,16 @@ void renderFrame(XrState& xr, JNIEnv* env) {
             layer.size = {settings[i].width,
                           settings[i].width * static_cast<float>(quad.height) / static_cast<float>(quad.width)};
             layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer);
+        }
+
+        // Last, so the pointer dot stays visible on the quad it points at
+        if (xr.glReady && renderController(xr, time, hands, projectionViews)) {
+            projectionLayer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT |
+                                         XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
+            projectionLayer.space = xr.space;
+            projectionLayer.viewCount = 2;
+            projectionLayer.views = projectionViews;
+            layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&projectionLayer);
         }
     }
 
@@ -1279,7 +1532,7 @@ bool createEyeSwapchains(XrState& xr) {
 }
 
 bool createXrSession(XrState& xr, jint gameWidth, jint gameHeight, jint menuWidth, jint menuHeight,
-                     jint controllerWidth, jint controllerHeight) {
+                     jint controllerWidth, jint controllerHeight, jint dockWidth, jint dockHeight) {
     {
         PFN_xrInitializeLoaderKHR initializeLoader = nullptr;
         if (!getProc(XR_NULL_HANDLE, "xrInitializeLoaderKHR", initializeLoader)) {
@@ -1381,6 +1634,7 @@ bool createXrSession(XrState& xr, jint gameWidth, jint gameHeight, jint menuWidt
            createQuadSwapchain(xr, xr.quads[QUAD_GAME], gameWidth, gameHeight) &&
            createQuadSwapchain(xr, xr.quads[QUAD_MENU], menuWidth, menuHeight) &&
            createQuadSwapchain(xr, xr.quads[QUAD_CONTROLLER], controllerWidth, controllerHeight) &&
+           createQuadSwapchain(xr, xr.quads[QUAD_DOCK], dockWidth, dockHeight) &&
            createEyeSwapchains(xr);
 }
 
@@ -1398,7 +1652,8 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, j
                                                                   jobject activity, jobject listener,
                                                                   jint gameWidth, jint gameHeight,
                                                                   jint menuWidth, jint menuHeight,
-                                                                  jint controllerWidth, jint controllerHeight) {
+                                                                  jint controllerWidth, jint controllerHeight,
+                                                                  jint dockWidth, jint dockHeight) {
     if (gXr != nullptr) {
         LOGE("XR already created");
         return JNI_FALSE;
@@ -1412,7 +1667,9 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, j
     xr->onInput = env->GetMethodID(listenerClass, "onXrInput", "(FFFFFFFFI)V");
     xr->onSessionState = env->GetMethodID(listenerClass, "onXrSessionState", "(I)V");
     xr->onScreenMoved = env->GetMethodID(listenerClass, "onXrScreenMoved", "(FFFFF)V");
-    if (xr->onInput == nullptr || xr->onSessionState == nullptr || xr->onScreenMoved == nullptr) {
+    xr->onPointer = env->GetMethodID(listenerClass, "onXrPointer", "(IFFZ)V");
+    if (xr->onInput == nullptr || xr->onSessionState == nullptr || xr->onScreenMoved == nullptr ||
+        xr->onPointer == nullptr) {
         env->ExceptionClear();
         LOGE("Listener is missing callback methods");
         destroyXr(env, xr);
@@ -1420,7 +1677,7 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, j
     }
 
     const bool created = createXrSession(*xr, gameWidth, gameHeight, menuWidth, menuHeight,
-                                         controllerWidth, controllerHeight);
+                                         controllerWidth, controllerHeight, dockWidth, dockHeight);
     // The loader now uses this activity; the previous one may be released
     if (gLoaderContext != nullptr) {
         env->DeleteGlobalRef(gLoaderContext);
@@ -1482,6 +1739,14 @@ JNIEXPORT void JNICALL
 Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetGrabEnabled(JNIEnv*, jclass, jboolean enabled) {
     if (gXr != nullptr) {
         gXr->grabEnabled = enabled;
+    }
+}
+
+// Aim the controllers at the menu quad and report the hit through onXrPointer
+JNIEXPORT void JNICALL
+Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetPointerEnabled(JNIEnv*, jclass, jboolean enabled) {
+    if (gXr != nullptr) {
+        gXr->pointerEnabled = enabled;
     }
 }
 

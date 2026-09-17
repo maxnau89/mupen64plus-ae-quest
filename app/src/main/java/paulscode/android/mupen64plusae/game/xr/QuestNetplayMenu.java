@@ -45,6 +45,15 @@ public class QuestNetplayMenu implements QuestNetplayRoom.Listener
         int getNetplayRoomPort();
     }
 
+    // Design system tokens at menu scale, see QuestVrMenu
+    private static final int ACCENT = 0xFF00DFDF;
+    private static final int TEXT_PRIMARY = 0xFFEFEFEF;
+    private static final int TEXT_TERTIARY = 0xFF747273;
+    private static final int SLAB_FILL = 0xF0121212;
+    private static final int ROW_SELECTED = 0x2600DFDF;
+    private static final int ROW_HOVER = 0x1AFFFFFF;
+    private static final float ROW_HEIGHT = 84;
+
     private enum Page { SERVER, CLIENT_LIST, CLIENT_CODE, CLIENT_ADDRESS, CLIENT_WAITING }
 
     private enum Action { START, GET_CODE, JOIN_SERVER, ENTER_CODE, ENTER_ADDRESS, CANCEL }
@@ -77,6 +86,10 @@ public class QuestNetplayMenu implements QuestNetplayRoom.Listener
     private String mMessage = "";
     private boolean mOpen = false;
 
+    // Top of the item list in the last drawn frame, for pointing at it
+    private float mListTop = -1;
+    private int mHovered = -1;
+
     // Digit editor for the room code and the address
     private final StringBuilder mEditText = new StringBuilder();
     private int mEditCursor = 0;
@@ -87,6 +100,7 @@ public class QuestNetplayMenu implements QuestNetplayRoom.Listener
     private final Paint mTextPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mHintPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint mEditPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint mMarkerPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
     public QuestNetplayMenu(Surface surface, int width, int height, Resources resources, Host host)
     {
@@ -96,16 +110,20 @@ public class QuestNetplayMenu implements QuestNetplayRoom.Listener
         mResources = resources;
         mHost = host;
 
-        mBackgroundPaint.setColor(Color.argb(235, 20, 22, 28));
-        mHighlightPaint.setColor(Color.argb(255, 60, 110, 200));
-        mTitlePaint.setColor(Color.WHITE);
-        mTitlePaint.setTextSize(52);
-        mTitlePaint.setTypeface(Typeface.DEFAULT_BOLD);
-        mTextPaint.setColor(Color.WHITE);
-        mTextPaint.setTextSize(42);
-        mHintPaint.setColor(Color.argb(255, 170, 175, 185));
-        mHintPaint.setTextSize(30);
-        mEditPaint.setColor(Color.WHITE);
+        // Same design system tokens as QuestVrMenu
+        mBackgroundPaint.setColor(SLAB_FILL);
+        mHighlightPaint.setColor(ROW_SELECTED);
+        mMarkerPaint.setColor(ACCENT);
+        mTitlePaint.setColor(TEXT_PRIMARY);
+        mTitlePaint.setTextSize(54);
+        mTitlePaint.setTypeface(Typeface.create("sans-serif-condensed", Typeface.BOLD));
+        mTitlePaint.setLetterSpacing(0.06f);
+        mTextPaint.setColor(TEXT_PRIMARY);
+        mTextPaint.setTextSize(38);
+        mTextPaint.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+        mHintPaint.setColor(TEXT_TERTIARY);
+        mHintPaint.setTextSize(28);
+        mEditPaint.setColor(ACCENT);
         mEditPaint.setTextSize(64);
         mEditPaint.setTypeface(Typeface.MONOSPACE);
     }
@@ -175,6 +193,46 @@ public class QuestNetplayMenu implements QuestNetplayRoom.Listener
 
     // ------------------------------------------------------------------------------------------
     // Navigation
+
+    /** A controller aims at the menu; u and v are 0..1 from the top left, or -1 when the ray left it. */
+    public void pointAt(float u, float v)
+    {
+        final int row = rowAt(u, v);
+        if (row == mHovered) {
+            return;
+        }
+        mHovered = row;
+        if (row >= 0) {
+            mSelected = row;
+        }
+        draw();
+    }
+
+    /** The trigger was pressed while aiming at the menu. Returns false if the ray missed a row. */
+    public boolean clickAt(float u, float v)
+    {
+        final int row = rowAt(u, v);
+        if (row < 0) {
+            return false;
+        }
+        mSelected = row;
+        activate();
+        return true;
+    }
+
+    private int rowAt(float u, float v)
+    {
+        if (u < 0.0f || v < 0.0f || mListTop < 0 || !mOpen) {
+            return -1;
+        }
+        final float x = u * mWidth;
+        final float y = v * mHeight;
+        if (x < 40 || x > mWidth - 40 || y < mListTop) {
+            return -1;
+        }
+        final int row = (int) ((y - mListTop) / ROW_HEIGHT);
+        return row >= 0 && row < mItems.size() ? row : -1;
+    }
 
     public void moveSelection(int direction)
     {
@@ -451,31 +509,41 @@ public class QuestNetplayMenu implements QuestNetplayRoom.Listener
             canvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR);
             canvas.drawRoundRect(new RectF(0, 0, mWidth, mHeight), 36, 36, mBackgroundPaint);
 
-            final float padding = 48;
-            float y = padding + 52;
+            final float padding = 56;
+            float y = padding + 60;
             canvas.drawText(mResources.getString(mRoom.isServer() ? R.string.questNetplay_titleHost
-                    : R.string.questNetplay_titleJoin), padding, y, mTitlePaint);
-            y += 70;
+                    : R.string.questNetplay_titleJoin).toUpperCase(), padding, y, mTitlePaint);
+            y += 34;
+            canvas.drawRect(padding, y, mWidth - padding, y + 1, mHintPaint);
+            y += 58;
 
             for (String line : infoLines()) {
                 canvas.drawText(line, padding, y, mTextPaint);
-                y += 56;
+                y += 54;
             }
-            y += 20;
+            y += 24;
 
             if (isEditing()) {
+                mListTop = -1;
                 drawEditor(canvas, padding, y + 60);
             } else {
-                final float rowHeight = 74;
+                mListTop = y;
                 for (int i = 0; i < mItems.size(); ++i) {
-                    final float top = y + i * rowHeight;
+                    final float top = y + i * ROW_HEIGHT;
+                    final RectF row = new RectF(padding - 16, top + 3, mWidth - padding + 16,
+                            top + ROW_HEIGHT - 3);
                     if (i == mSelected) {
-                        canvas.drawRoundRect(new RectF(padding - 16, top, mWidth - padding + 16, top + rowHeight - 8),
-                                18, 18, mHighlightPaint);
+                        mHighlightPaint.setColor(ROW_SELECTED);
+                        canvas.drawRoundRect(row, 16, 16, mHighlightPaint);
+                        canvas.drawRoundRect(new RectF(row.left, top + 14, row.left + 5, top + ROW_HEIGHT - 14),
+                                3, 3, mMarkerPaint);
+                    } else if (i == mHovered) {
+                        mHighlightPaint.setColor(ROW_HOVER);
+                        canvas.drawRoundRect(row, 16, 16, mHighlightPaint);
                     }
                     final Item item = mItems.get(i);
-                    canvas.drawText(item.action == Action.CANCEL ? cancelLabel() : item.label, padding,
-                            top + rowHeight - 30, mTextPaint);
+                    canvas.drawText(item.action == Action.CANCEL ? cancelLabel() : item.label, padding + 8,
+                            top + ROW_HEIGHT / 2 + 13, mTextPaint);
                 }
             }
 

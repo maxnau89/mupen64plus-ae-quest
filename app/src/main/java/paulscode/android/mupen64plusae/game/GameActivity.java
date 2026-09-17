@@ -92,6 +92,7 @@ import paulscode.android.mupen64plusae.input.PeripheralController;
 import paulscode.android.mupen64plusae.input.SensorController;
 import paulscode.android.mupen64plusae.game.xr.QuestN64Overlay;
 import paulscode.android.mupen64plusae.game.xr.QuestNetplayMenu;
+import paulscode.android.mupen64plusae.game.xr.QuestSpatialDock;
 import paulscode.android.mupen64plusae.game.xr.QuestVrMenu;
 import paulscode.android.mupen64plusae.game.xr.QuestXr;
 import paulscode.android.mupen64plusae.input.AbstractController;
@@ -164,6 +165,7 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         NetplayClientSetupDialog.OnServerDialogActionListener,
         NetplayServerSetupDialog.OnClientDialogActionListener, NetplayFragment.NetplayListener,
         RetroAchievementsManager.GameLoadListener, QuestTouchController.SessionListener, QuestVrMenu.Host,
+        QuestSpatialDock.Host,
         QuestNetplayMenu.Host
 {
     private static final String TAG = "GameActivity";
@@ -205,8 +207,14 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     private static final String XR_PREF_PASSTHROUGH = "passthrough";
     private static final String XR_PREF_CONTROLLER_MODE = "controller_mode";
     private static final int XR_MENU_WIDTH = 1024;
-    private static final int XR_MENU_HEIGHT = 1260;
-    private static final float XR_MENU_SIZE = 1.1f;
+    private static final int XR_MENU_HEIGHT = 1480;
+    private static final float XR_MENU_SIZE = 0.85f;
+    // The menu sits beside the game screen, angled back towards the player
+    private static final float XR_MENU_GAP = 0.08f;
+    private static final float XR_MENU_YAW = -0.45f;
+    private static final int XR_DOCK_WIDTH = 1400;
+    private static final int XR_DOCK_HEIGHT = 164;
+    private static final float XR_DOCK_SIZE = 0.95f;
     private static final int XR_CONTROLLER_WIDTH = 768;
     private static final int XR_CONTROLLER_HEIGHT = 512;
     private static final float XR_DEFAULT_SCREEN_DISTANCE = 2.0f;
@@ -231,6 +239,7 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     private float mXrScreenSize = XR_DEFAULT_SCREEN_SIZE;
     private QuestTouchController mQuestTouchController;
     private QuestVrMenu mQuestVrMenu;
+    private QuestSpatialDock mQuestSpatialDock;
     private QuestN64Overlay mQuestN64Overlay;
 
     // Input resources
@@ -550,11 +559,15 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
             if (QuestXr.create(this, mQuestTouchController,
                     mDisplayResolutionData.getResolutionWidth(mGamePrefs.verticalRenderResolution)*mGlobalPrefs.shaderScaleFactor,
                     mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution)*mGlobalPrefs.shaderScaleFactor,
-                    XR_MENU_WIDTH, XR_MENU_HEIGHT, XR_CONTROLLER_WIDTH, XR_CONTROLLER_HEIGHT)) {
+                    XR_MENU_WIDTH, XR_MENU_HEIGHT, XR_CONTROLLER_WIDTH, XR_CONTROLLER_HEIGHT,
+                    XR_DOCK_WIDTH, XR_DOCK_HEIGHT)) {
                 mXrMode = true;
                 mGameSurface.setExternalSurface(QuestXr.getSurface(QuestXr.QUAD_GAME));
                 mQuestVrMenu = new QuestVrMenu(QuestXr.getSurface(QuestXr.QUAD_MENU), XR_MENU_WIDTH, XR_MENU_HEIGHT,
                         getResources(), mCoreFragment, this, mRomDisplayName);
+                mQuestSpatialDock = new QuestSpatialDock(QuestXr.getSurface(QuestXr.QUAD_DOCK), XR_DOCK_WIDTH,
+                        XR_DOCK_HEIGHT, getResources(), this, mRomDisplayName);
+                mQuestSpatialDock.setVisible(true);
                 mQuestN64Overlay = new QuestN64Overlay(QuestXr.getSurface(QuestXr.QUAD_CONTROLLER),
                         XR_CONTROLLER_WIDTH, XR_CONTROLLER_HEIGHT);
                 mQuestN64Overlay.update(new boolean[AbstractController.NUM_N64_BUTTONS], 0, 0);
@@ -921,16 +934,105 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         // In passthrough the game gets rounded corners like a Horizon window
         QuestXr.setQuad(QuestXr.QUAD_GAME, true, QuestXr.ATTACH_WORLD, mXrScreenX, mXrScreenY, mXrScreenZ,
                 mXrScreenYaw, mXrScreenSize, mXrPassthrough, mXrPassthrough ? XR_PANEL_CORNER_RADIUS : 0.0f, true);
-        // Slightly in front of the game screen; while adjusting it only shows a hint banner
-        QuestXr.setQuad(QuestXr.QUAD_MENU, menuOpen || mXrAdjusting, QuestXr.ATTACH_GAME, 0.0f, 0.0f, 0.4f, 0.0f,
-                XR_MENU_SIZE, true, 0.0f, false);
+        // Beside the game screen so the game stays visible; while adjusting it only shows a hint banner
+        final float menuX = (mXrScreenSize + XR_MENU_SIZE) / 2.0f + XR_MENU_GAP;
+        QuestXr.setQuad(QuestXr.QUAD_MENU, menuOpen || mXrAdjusting, QuestXr.ATTACH_GAME, menuX, 0.0f, 0.12f,
+                XR_MENU_YAW, XR_MENU_SIZE, true, 0.0f, false);
+
+        // The dock hangs under the game screen, the 2D controller below that
+        final float dockHeight = XR_DOCK_SIZE * XR_DOCK_HEIGHT / XR_DOCK_WIDTH;
+        final boolean dockVisible = mQuestSpatialDock != null && mQuestSpatialDock.isVisible()
+                && !mXrAdjusting && !isXrNetplayMenuOpen();
+        final float dockY = -(screenHeight + dockHeight) / 2.0f - 0.04f;
+        QuestXr.setQuad(QuestXr.QUAD_DOCK, dockVisible, QuestXr.ATTACH_GAME, 0.0f, dockY, 0.06f, 0.0f,
+                XR_DOCK_SIZE, true, 0.0f, false);
+        QuestXr.setPointerEnabled(menuOpen || dockVisible);
 
         QuestXr.setController3dVisible(mXrControllerMode == QuestN64Overlay.MODE_HANDS);
         final float width = mXrScreenSize * 0.35f;
         final float height = width * XR_CONTROLLER_HEIGHT / XR_CONTROLLER_WIDTH;
+        final float controllerY = dockVisible
+                ? dockY - (dockHeight + height) / 2.0f - 0.03f
+                : -(screenHeight + height) / 2.0f - 0.05f;
         QuestXr.setQuad(QuestXr.QUAD_CONTROLLER, mXrControllerMode == QuestN64Overlay.MODE_SCREEN,
-                QuestXr.ATTACH_GAME, 0.0f, -(screenHeight + height) / 2.0f - 0.05f, 0.05f, 0.0f, width, true,
-                0.0f, false);
+                QuestXr.ATTACH_GAME, 0.0f, controllerY, 0.05f, 0.0f, width, true, 0.0f, false);
+    }
+
+    @Override
+    public void onXrPointerMoved(int quad, float u, float v)
+    {
+        if (quad == QuestXr.QUAD_MENU) {
+            if (isXrNetplayMenuOpen()) {
+                mQuestNetplayMenu.pointAt(u, v);
+            } else if (mQuestVrMenu != null && mQuestVrMenu.isOpen()) {
+                mQuestVrMenu.pointAt(u, v);
+            }
+            if (mQuestSpatialDock != null) {
+                mQuestSpatialDock.pointAt(-1.0f, -1.0f);
+            }
+        } else if (quad == QuestXr.QUAD_DOCK) {
+            if (mQuestSpatialDock != null) {
+                mQuestSpatialDock.pointAt(u, v);
+            }
+        } else {
+            if (mQuestVrMenu != null && mQuestVrMenu.isOpen()) {
+                mQuestVrMenu.pointAt(-1.0f, -1.0f);
+            }
+            if (isXrNetplayMenuOpen()) {
+                mQuestNetplayMenu.pointAt(-1.0f, -1.0f);
+            }
+            if (mQuestSpatialDock != null) {
+                mQuestSpatialDock.pointAt(-1.0f, -1.0f);
+            }
+        }
+    }
+
+    @Override
+    public void onXrPointerClick(int quad, float u, float v)
+    {
+        if (quad == QuestXr.QUAD_MENU) {
+            if (isXrNetplayMenuOpen()) {
+                mQuestNetplayMenu.clickAt(u, v);
+            } else if (mQuestVrMenu != null && mQuestVrMenu.isOpen()) {
+                mQuestVrMenu.clickAt(u, v);
+            }
+        } else if (quad == QuestXr.QUAD_DOCK && mQuestSpatialDock != null) {
+            mQuestSpatialDock.clickAt(u, v);
+        }
+    }
+
+    @Override
+    public void onDockAction(QuestSpatialDock.Action action)
+    {
+        if (mCoreFragment == null) {
+            return;
+        }
+        switch (action) {
+            case SAVE:
+                mCoreFragment.saveSlot();
+                break;
+            case LOAD:
+                mCoreFragment.loadSlot();
+                break;
+            case SCREENSHOT:
+                onVrMenuScreenshot();
+                break;
+            case MENU:
+                onXrMenuToggleRequested();
+                break;
+            case EXIT:
+                onVrMenuExitGame();
+                break;
+        }
+        if (mQuestSpatialDock != null) {
+            mQuestSpatialDock.refresh();
+        }
+    }
+
+    @Override
+    public int getSlot()
+    {
+        return mCoreFragment != null ? mCoreFragment.getSlot() : 0;
     }
 
     @Override

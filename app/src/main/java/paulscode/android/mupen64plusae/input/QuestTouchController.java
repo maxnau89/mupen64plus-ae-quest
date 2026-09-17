@@ -16,6 +16,9 @@ import paulscode.android.mupen64plusae.jni.CoreFragment;
  * A/B: A/B. Left trigger: L. Left grip: Z. Right trigger: R.
  * Menu: Start when tapped, VR menu when held.
  * <p>
+ * Aiming a controller at the VR menu or the dock moves the selection there and the trigger clicks
+ * it; while the ray is on the dock the trigger does not reach the game.
+ * <p>
  * While the VR menu is open, input navigates the menu instead of reaching the game.
  */
 public class QuestTouchController extends AbstractController implements QuestXr.Listener
@@ -42,6 +45,12 @@ public class QuestTouchController extends AbstractController implements QuestXr.
 
         void onXrScreenMoved(float x, float y, float z, float yaw, float width);
 
+        /** A controller aims at a pointable quad, or quad is -1 when the ray left all of them. */
+        void onXrPointerMoved(int quad, float u, float v);
+
+        /** The trigger was pressed while aiming at a pointable quad. */
+        void onXrPointerClick(int quad, float u, float v);
+
         /** The N64 controller state changed, arrays are copies. */
         void onN64StateChanged(boolean[] buttons, float axisX, float axisY);
     }
@@ -58,6 +67,9 @@ public class QuestTouchController extends AbstractController implements QuestXr.
     private final SessionListener mSessionListener;
     private final Handler mMainHandler = new Handler(Looper.getMainLooper());
     private volatile boolean mMenuOpen = false;
+    // Quad the ray currently hits, so a click on the dock does not also press R in the game
+    private volatile int mPointerQuad = -1;
+    private boolean mPointerPressed = false;
     private volatile boolean mAdjusting = false;
     private boolean mFocused = false;
     private int mLastButtons = 0;
@@ -146,7 +158,7 @@ public class QuestTouchController extends AbstractController implements QuestXr.
         b[START] = now < mStartPulseUntil;
         b[BTN_L] = leftTrigger > TRIGGER_THRESHOLD;
         b[BTN_Z] = leftGrip > TRIGGER_THRESHOLD;
-        b[BTN_R] = rightTrigger > TRIGGER_THRESHOLD;
+        b[BTN_R] = rightTrigger > TRIGGER_THRESHOLD && mPointerQuad != QuestXr.QUAD_DOCK;
 
         final boolean right = rightX > DIRECTION_THRESHOLD;
         final boolean left = rightX < -DIRECTION_THRESHOLD;
@@ -208,6 +220,20 @@ public class QuestTouchController extends AbstractController implements QuestXr.
     }
 
     @Override
+    public void onXrPointer(int quad, float u, float v, boolean pressed)
+    {
+        mPointerQuad = quad;
+        final boolean clicked = pressed && !mPointerPressed && quad >= 0;
+        mPointerPressed = pressed;
+        post(() -> {
+            mSessionListener.onXrPointerMoved(quad, u, v);
+            if (clicked) {
+                mSessionListener.onXrPointerClick(quad, u, v);
+            }
+        });
+    }
+
+    @Override
     public void onXrSessionState(int state)
     {
         final boolean focused = state == QuestXr.STATE_FOCUSED;
@@ -215,6 +241,8 @@ public class QuestTouchController extends AbstractController implements QuestXr.
             mFocused = focused;
             if (!focused) {
                 mLastButtons = 0;
+                mPointerQuad = -1;
+                mPointerPressed = false;
                 releaseAll();
             }
             post(() -> mSessionListener.onXrFocusChanged(focused));
