@@ -1,97 +1,183 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/linearLayout1"
+<!-- Add ROMs (ui_kits/quest_vr, PreferenceRow + Panel) -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:padding="16dp" >
+    android:layout_height="match_parent"
+    android:background="@color/quest_slab_ground"
+    android:clipToPadding="false"
+    android:padding="@dimen/quest_slab_inset">
 
-    <TextView
-        android:id="@+id/text1"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/scanRomsDialog_selectRom"
-        android:textAppearance="?android:attr/textAppearanceMedium" />
-    <TextView
-        android:id="@+id/textNoSafSupport"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:textAppearance="?android:attr/textAppearanceLarge" />
+        android:orientation="vertical">
 
-    <TableLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content" >
+        <TextView
+            android:id="@+id/text1"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/scanRomsDialog_selectRom"
+            style="@style/QuestSubtitle" />
 
-        <TableRow
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" >
+        <TextView
+            android:id="@+id/textNoSafSupport"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/quest_gap_min"
+            android:visibility="gone"
+            style="@style/QuestRowTitle" />
 
-            <Button
-                android:id="@+id/buttonFilePicker"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:layout_marginBottom="10dp"
-                android:text="@string/scanRomsDialog_select_file" />
-        </TableRow>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/quest_gap_min"
+            android:orientation="vertical"
+            android:divider="@drawable/quest_divider"
+            android:showDividers="middle"
+            android:background="@drawable/quest_panel_raised"
+            android:elevation="8dp">
 
-        <TableRow
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" >
-
-            <Button
+            <LinearLayout
                 android:id="@+id/buttonFolderPicker"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:layout_marginBottom="10dp"
-                android:text="@string/scanRomsDialog_select_folder" />
-        </TableRow>
+                style="@style/QuestScanRow">
 
-        <TableRow
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content" >
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="20dp"
+                    android:alpha="0.92"
+                    android:src="@drawable/ic_folder"
+                    android:importantForAccessibility="no" />
 
-            <Button
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingTop="10dp"
+                    android:paddingBottom="10dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/scanRomsDialog_select_folder"
+                        style="@style/QuestRowTitle" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/quest_scan_folderSummary"
+                        style="@style/QuestSubtitle" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/buttonFilePicker"
+                style="@style/QuestScanRow">
+
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="20dp"
+                    android:alpha="0.92"
+                    android:src="@drawable/ic_box"
+                    android:importantForAccessibility="no" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingTop="10dp"
+                    android:paddingBottom="10dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/scanRomsDialog_select_file"
+                        style="@style/QuestRowTitle" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/quest_scan_fileSummary"
+                        style="@style/QuestSubtitle" />
+                </LinearLayout>
+            </LinearLayout>
+
+            <LinearLayout
                 android:id="@+id/buttonEnterPath"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="10dp"
-                android:layout_marginBottom="10dp"
-                android:text="@string/scanRomsDialog_enter_path" />
-        </TableRow>
-    </TableLayout>
+                style="@style/QuestScanRow">
 
-    <TextView
-        android:id="@+id/fileDescription"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:layout_marginBottom="20dp"
-        android:textAppearance="?android:attr/textAppearanceMedium" />
+                <ImageView
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="12dp"
+                    android:layout_marginEnd="20dp"
+                    android:alpha="0.92"
+                    android:src="@drawable/ic_pencil"
+                    android:importantForAccessibility="no" />
 
-    <CheckBox
-        android:id="@+id/checkBox1"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/scanRomsDialog_searchZips" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:paddingTop="10dp"
+                    android:paddingBottom="10dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/scanRomsDialog_enter_path"
+                        style="@style/QuestRowTitle" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/quest_scan_pathSummary"
+                        style="@style/QuestSubtitle" />
+                </LinearLayout>
+            </LinearLayout>
+        </LinearLayout>
 
-    <CheckBox
-        android:id="@+id/checkBox2"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/scanRomsDialog_downloadArt" />
+        <TextView
+            android:id="@+id/fileDescription"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/quest_gap_min"
+            android:visibility="gone"
+            style="@style/QuestSubtitle" />
 
-    <CheckBox
-        android:id="@+id/checkBox3"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/scanRomsDialog_clearGallery" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="28dp"
+            android:layout_marginBottom="@dimen/quest_gap_min"
+            android:text="@string/quest_scan_optionsTitle"
+            style="@style/QuestSectionLabel" />
 
-    <CheckBox
-        android:id="@+id/checkBox4"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="@string/scanRomsDialog_scanSubdirectories" />
-</LinearLayout>
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:divider="@drawable/quest_divider"
+            android:showDividers="middle"
+            android:background="@drawable/quest_panel_raised"
+            android:elevation="8dp">
+
+            <CheckBox
+                android:id="@+id/checkBox1"
+                android:text="@string/scanRomsDialog_searchZips"
+                style="@style/QuestScanCheck" />
+
+            <CheckBox
+                android:id="@+id/checkBox4"
+                android:text="@string/scanRomsDialog_scanSubdirectories"
+                style="@style/QuestScanCheck" />
+
+            <CheckBox
+                android:id="@+id/checkBox2"
+                android:text="@string/scanRomsDialog_downloadArt"
+                style="@style/QuestScanCheck" />
+
+            <CheckBox
+                android:id="@+id/checkBox3"
+                android:text="@string/scanRomsDialog_clearGallery"
+                style="@style/QuestScanCheck" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

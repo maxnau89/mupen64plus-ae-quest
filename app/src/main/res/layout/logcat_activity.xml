@@ -4,7 +4,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="5dp" >
+    android:background="@color/quest_slab_ground"
+    android:padding="@dimen/quest_slab_inset" >
 
     <ScrollView
         android:id="@+id/logcatScroll"
@@ -19,7 +20,8 @@
                     android:id="@+id/logcatText"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:textSize="12sp"
+                    android:textSize="@dimen/quest_text_sm"
+                    android:textColor="@color/quest_text_secondary"
                     android:fontFamily="monospace"
                     android:typeface="monospace"/>
             </HorizontalScrollView>
@@ -29,24 +31,25 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        style="?android:attr/buttonBarStyle"
+        android:layout_marginTop="@dimen/quest_gap_min"
         android:orientation="horizontal" >
         <View
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:layout_weight="1" />
-        <Button
+        <TextView
             android:id="@+id/logcatCancel"
-            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@android:string/cancel" />
-        <Button
+            android:text="@android:string/cancel"
+            style="@style/QuestButton.Secondary" />
+        <TextView
             android:id="@+id/logcatShare"
-            style="?android:attr/buttonBarButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/actionShare_title" />
+            android:layout_marginStart="@dimen/quest_gap_min"
+            android:text="@string/actionShare_title"
+            style="@style/QuestButton.Accent" />
     </LinearLayout>
 
 </LinearLayout>

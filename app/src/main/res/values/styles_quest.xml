@@ -57,4 +57,38 @@
         <item name="android:minHeight">88dp</item>
         <item name="contentInsetStart">28dp</item>
     </style>
+
+    <!-- Add ROMs: source rows and option checkboxes -->
+    <style name="QuestScanRow">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">@dimen/quest_hit_comfort</item>
+        <item name="android:orientation">horizontal</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:paddingStart">12dp</item>
+        <item name="android:paddingEnd">20dp</item>
+        <item name="android:clickable">true</item>
+        <item name="android:focusable">true</item>
+        <item name="android:background">@drawable/quest_row_background</item>
+    </style>
+
+    <!-- Left aligned group label above a panel -->
+    <style name="QuestSectionLabel">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textSize">@dimen/quest_text_sm</item>
+        <item name="android:textColor">@color/quest_text_secondary</item>
+    </style>
+
+    <style name="QuestScanCheck">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">@dimen/quest_hit_comfort</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingEnd">20dp</item>
+        <item name="android:textSize">@dimen/quest_text_base</item>
+        <item name="android:textColor">@color/quest_text_primary</item>
+        <item name="android:background">@drawable/quest_row_background</item>
+    </style>
 </resources>

@@ -46,6 +46,8 @@
     <string name="quest_library_count">%1$d von %2$d ROMs</string>
     <string name="quest_game_title">Spiel</string>
     <string name="quest_game_restart">Neu starten</string>
+    <string name="quest_game_start">Starten</string>
+    <string name="quest_game_startHint">Noch kein Spielstand vorhanden. Starten beginnt ein neues Spiel.</string>
     <string name="quest_game_resumeHint">Fortsetzen startet beim letzten automatischen Spielstand. Neu starten setzt das Spiel zurück.</string>
     <string name="quest_game_back">Zurück zur Bibliothek</string>
     <string name="quest_game_settingsSummary">Einstellungen nur für diese ROM</string>
@@ -79,4 +81,8 @@
     <string name="quest_about_reportBug">Problem beim Original-Projekt melden</string>
     <string name="quest_about_model">3D-Controller-Modell</string>
     <string name="quest_about_modelSummary">„N64 Controller“ von Marshle, CC BY 4.0</string>
+    <string name="quest_scan_folderSummary">Einen Ordner samt Unterordnern durchsuchen</string>
+    <string name="quest_scan_fileSummary">Eine einzelne ROM-Datei hinzufügen</string>
+    <string name="quest_scan_pathSummary">Einen Speicherpfad von Hand eingeben</string>
+    <string name="quest_scan_optionsTitle">Scan-Optionen</string>
 </resources>

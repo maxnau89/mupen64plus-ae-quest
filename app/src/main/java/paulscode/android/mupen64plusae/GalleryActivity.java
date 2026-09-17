@@ -49,6 +49,7 @@ import androidx.appcompat.widget.SearchView;
 import androidx.appcompat.widget.SearchView.OnQueryTextListener;
 import androidx.appcompat.widget.Toolbar;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
+import androidx.core.content.ContextCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.fragment.app.FragmentManager;
@@ -71,6 +72,7 @@ import paulscode.android.mupen64plusae.game.GameActivity;
 import paulscode.android.mupen64plusae.jni.CoreService;
 import paulscode.android.mupen64plusae.persistent.AppData;
 import paulscode.android.mupen64plusae.persistent.ConfigFile;
+import paulscode.android.mupen64plusae.persistent.GamePrefs;
 import paulscode.android.mupen64plusae.persistent.GlobalPrefs;
 import paulscode.android.mupen64plusae.task.ExtractAssetsOrCleanupTask;
 import paulscode.android.mupen64plusae.task.GalleryRefreshTask;
@@ -103,6 +105,9 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
     private static final String STATE_FAQ_POPUP = "STATE_FAQ_POPUP";
     public static final String KEY_IS_LEANBACK = "KEY_IS_LEANBACK";
     public static final String KEY_IS_SHORTCUT = "KEY_IS_SHORTCUT";
+
+    // Auto save file names, see GameDataManager
+    private static final String AUTO_SAVE_MATCHER = "^\\d\\d\\d\\d-\\d\\d-\\d\\d-\\d\\d-\\d\\d-\\d\\d\\..*sav$";
 
     public static final int REMOVE_FROM_LIBRARY_DIALOG_ID = 1;
     public static final int CLEAR_SHADER_CACHE_DIALOG_ID = 2;
@@ -704,8 +709,22 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         ((TextView) findViewById(R.id.questGameMeta)).setText(
                 (item.headerName != null ? item.headerName.trim() : "") + " \u00B7 " + item.countryCode.toString());
 
-        findViewById(R.id.questGameResume).setOnClickListener(v -> handleGameAction(GameAction.RESUME));
-        findViewById(R.id.questGameRestart).setOnClickListener(v -> handleGameAction(GameAction.RESTART));
+        final TextView resume = findViewById(R.id.questGameResume);
+        final TextView restart = findViewById(R.id.questGameRestart);
+        resume.setOnClickListener(v -> handleGameAction(GameAction.RESUME));
+        restart.setOnClickListener(v -> handleGameAction(GameAction.RESTART));
+
+        // Resume would silently start a new game when the auto save folder is still empty
+        final boolean canResume = hasAutoSave(item);
+        resume.setVisibility(canResume ? View.VISIBLE : View.GONE);
+        restart.setText(canResume ? R.string.quest_game_restart : R.string.quest_game_start);
+        restart.setBackgroundResource(canResume ? R.drawable.quest_button_secondary : R.drawable.quest_button_accent);
+        restart.setTextColor(canResume ? ContextCompat.getColor(this, R.color.quest_text_primary) : 0xFF06201F);
+        final ViewGroup.MarginLayoutParams restartParams = (ViewGroup.MarginLayoutParams) restart.getLayoutParams();
+        restartParams.setMarginStart(canResume ? getResources().getDimensionPixelSize(R.dimen.quest_gap_min) : 0);
+        restart.setLayoutParams(restartParams);
+        ((TextView) findViewById(R.id.questGameResumeHint)).setText(
+                canResume ? R.string.quest_game_resumeHint : R.string.quest_game_startHint);
 
         final LinearLayout actions = findViewById(R.id.questGameActions);
         actions.removeAllViews();
@@ -730,7 +749,34 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         updateQuestRailSelection();
         mGridView.setVisibility(View.INVISIBLE);
         findViewById(R.id.questGameDetail).setVisibility(View.VISIBLE);
-        findViewById(R.id.questGameResume).requestFocus();
+        (canResume ? resume : restart).requestFocus();
+    }
+
+    /**
+     * True when the game has at least one auto save to resume from. Mirrors the paths built by
+     * GamePrefs.setGameDirs and the file filter of GameDataManager.getLatestAutoSave.
+     */
+    private boolean hasAutoSave(GalleryItem item)
+    {
+        final String[] dataDirs = {
+                GamePrefs.getGameDataPath(item.md5, item.headerName != null ? item.headerName : "",
+                        item.countryCode.toString()),
+                GamePrefs.getAlternateGameDataPath(item.md5)
+        };
+        for (String dataDir : dataDirs) {
+            final File[] saves = new File(mAppData.gameDataDir + "/" + dataDir + "/" + GamePrefs.AUTO_SAVES_DIR)
+                    .listFiles(pathname -> pathname.getName().matches(AUTO_SAVE_MATCHER));
+            if (saves != null) {
+                for (File save : saves) {
+                    // V2 saves are only usable once their ".complete" marker exists
+                    if (!save.getPath().contains("v2")
+                            || new File(save.getPath() + "." + CoreService.COMPLETE_EXTENSION).exists()) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false;
     }
 
     private boolean isQuestGameDetailShown()

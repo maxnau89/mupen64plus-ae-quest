@@ -12,8 +12,8 @@ import paulscode.android.mupen64plusae.jni.CoreFragment;
 /**
  * Maps Meta Quest Touch controllers (read through OpenXR) to player 1's N64 controller.
  * <p>
- * Left stick: analog stick. Right stick: C buttons, or D-pad while Y is held.
- * A/B: A/B. Left trigger: L. Left grip: Z. Right trigger or right grip: R.
+ * Left stick: analog stick. Right stick: C buttons, or D-pad while the right grip is held.
+ * A/B: A/B. Left trigger: L. Left grip: Z. Right trigger: R.
  * Menu: Start when tapped, VR menu when held.
  * <p>
  * While the VR menu is open, input navigates the menu instead of reaching the game.
@@ -138,28 +138,29 @@ public class QuestTouchController extends AbstractController implements QuestXr.
             mStartPulseUntil = now + START_PULSE_MS;
         }
 
-        final boolean yHeld = (buttons & QuestXr.BTN_Y) != 0;
+        // The right grip is the D-pad modifier, so it can't double as R
+        final boolean dpadHeld = rightGrip > TRIGGER_THRESHOLD;
         final boolean[] b = mState.buttons;
         b[BTN_A] = (buttons & QuestXr.BTN_A) != 0;
         b[BTN_B] = (buttons & QuestXr.BTN_B) != 0;
         b[START] = now < mStartPulseUntil;
         b[BTN_L] = leftTrigger > TRIGGER_THRESHOLD;
         b[BTN_Z] = leftGrip > TRIGGER_THRESHOLD;
-        b[BTN_R] = rightTrigger > TRIGGER_THRESHOLD || rightGrip > TRIGGER_THRESHOLD;
+        b[BTN_R] = rightTrigger > TRIGGER_THRESHOLD;
 
         final boolean right = rightX > DIRECTION_THRESHOLD;
         final boolean left = rightX < -DIRECTION_THRESHOLD;
         final boolean up = rightY > DIRECTION_THRESHOLD;
         final boolean down = rightY < -DIRECTION_THRESHOLD;
 
-        b[CPD_R] = !yHeld && right;
-        b[CPD_L] = !yHeld && left;
-        b[CPD_U] = !yHeld && up;
-        b[CPD_D] = !yHeld && down;
-        b[DPD_R] = yHeld && right;
-        b[DPD_L] = yHeld && left;
-        b[DPD_U] = yHeld && up;
-        b[DPD_D] = yHeld && down;
+        b[CPD_R] = !dpadHeld && right;
+        b[CPD_L] = !dpadHeld && left;
+        b[CPD_U] = !dpadHeld && up;
+        b[CPD_D] = !dpadHeld && down;
+        b[DPD_R] = dpadHeld && right;
+        b[DPD_L] = dpadHeld && left;
+        b[DPD_U] = dpadHeld && up;
+        b[DPD_D] = dpadHeld && down;
 
         mState.axisFractionX = applyDeadzone(leftX);
         mState.axisFractionY = applyDeadzone(leftY);

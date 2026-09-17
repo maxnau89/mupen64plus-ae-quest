@@ -47,6 +47,8 @@
     <string name="quest_library_count">%1$d of %2$d ROMs</string>
     <string name="quest_game_title">Game</string>
     <string name="quest_game_restart">Restart</string>
+    <string name="quest_game_start">Start</string>
+    <string name="quest_game_startHint">No save state yet. Start begins a new game.</string>
     <string name="quest_game_resumeHint">Resume starts from the last automatic save. Restart resets the game.</string>
     <string name="quest_game_back">Back to library</string>
     <string name="quest_game_settingsSummary">Overrides just for this ROM</string>
@@ -81,4 +83,8 @@
     <string name="quest_about_model">3D controller model</string>
     <string name="quest_about_modelSummary">\"N64 Controller\" by Marshle, CC BY 4.0</string>
     <string name="quest_about_modelUri" translatable="false">https://sketchfab.com/3d-models/n64-controller-8fb694b8c4bf4bbb8bc66f38503f4ffb</string>
+    <string name="quest_scan_folderSummary">Scan a folder and all of its subfolders</string>
+    <string name="quest_scan_fileSummary">Add a single ROM file</string>
+    <string name="quest_scan_pathSummary">Type a storage path by hand</string>
+    <string name="quest_scan_optionsTitle">Scan options</string>
 </resources>

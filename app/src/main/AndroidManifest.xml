@@ -72,7 +72,7 @@
         <activity
             android:name="paulscode.android.mupen64plusae.SplashActivity"
             android:label="@string/SplashActivity_title"
-            android:theme="@style/Theme.AppCompat.Black"
+            android:theme="@style/Theme.Mupen64plusaeTheme.NoActionBar"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -114,7 +114,7 @@
         <activity
             android:name="paulscode.android.mupen64plusae.ScanRomsActivity"
             android:exported="false"
-            android:label="@string/menuItem_refreshRoms"
+            android:label="@string/quest_rail_addRoms"
             android:launchMode="singleTop"
             android:theme="@style/Theme.Mupen64plusaeTheme" />
         <activity android:name="paulscode.android.mupen64plusae.util.LegacyFilePicker"

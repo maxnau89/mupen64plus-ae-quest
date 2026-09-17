@@ -5,7 +5,6 @@ import android.os.Bundle;
 import androidx.appcompat.app.AppCompatActivity;
 
 import android.text.TextUtils;
-import android.widget.Button;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
@@ -15,8 +14,8 @@ import paulscode.android.mupen64plusae.ActivityHelper;
 
 public class LogcatActivity extends AppCompatActivity
 {
-    private Button mCancelButton;
-    private Button mShareButton;
+    private TextView mCancelButton;
+    private TextView mShareButton;
     private TextView mLogText;
     private ScrollView mTextScroll;
     private String mLogTextString = null;

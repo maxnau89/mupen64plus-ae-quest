@@ -20,7 +20,6 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import android.text.TextUtils;
 import android.util.Log;
-import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.TextView;
 
@@ -119,12 +118,9 @@ public class ScanRomsActivity extends AppCompatActivity {
 
         setContentView(R.layout.scan_roms_activity);
 
-        Button folderPickerButton = findViewById(R.id.buttonFolderPicker);
-        folderPickerButton.setOnClickListener(v -> startFolderPicker());
-        Button filePickerButton = findViewById(R.id.buttonFilePicker);
-        filePickerButton.setOnClickListener(v -> startFilePicker());
-        Button enterPathButton = findViewById(R.id.buttonEnterPath);
-        enterPathButton.setOnClickListener(v -> ensureManageStoragePermission(this::startManualPathEntry));
+        findViewById(R.id.buttonFolderPicker).setOnClickListener(v -> startFolderPicker());
+        findViewById(R.id.buttonFilePicker).setOnClickListener(v -> startFilePicker());
+        findViewById(R.id.buttonEnterPath).setOnClickListener(v -> ensureManageStoragePermission(this::startManualPathEntry));
 
         AppData appData = new AppData(this);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && appData.useLegacyFileBrowser) {
@@ -133,6 +129,7 @@ public class ScanRomsActivity extends AppCompatActivity {
             TextView textViewNoSaf = findViewById(R.id.textNoSafSupport);
             String text = getString(R.string.scanRomsDialog_no_saf) + " " + globalPrefs.externalRomsDirNoSaf;
             textViewNoSaf.setText(text);
+            textViewNoSaf.setVisibility(android.view.View.VISIBLE);
         }
 
         // Set checkbox state

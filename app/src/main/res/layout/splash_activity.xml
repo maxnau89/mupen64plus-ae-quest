@@ -1,28 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Startup slab: centred logo with the extraction status underneath -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    tools:ignore="UseCompoundDrawables" >
-    
+    android:gravity="center"
+    android:background="@color/quest_slab_ground"
+    android:padding="@dimen/quest_slab_inset">
+
+    <ImageView
+        android:id="@+id/mainImage"
+        android:layout_width="360dp"
+        android:layout_height="wrap_content"
+        android:adjustViewBounds="true"
+        android:contentDescription="@string/app_name"
+        android:src="@drawable/publisherlogo" />
+
     <TextView
         android:id="@+id/mainText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:ems="10"
-        android:gravity="center_vertical"
+        android:layout_marginTop="32dp"
+        android:gravity="center"
         android:minLines="2"
-        android:paddingLeft="10dp"
-        android:paddingRight="10dp"
-        android:text="@string/assetExtractor_initializing" />
-    
-    <ImageView
-        android:id="@+id/mainImage"
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_gravity="center"
-        android:contentDescription="@string/app_name"
-        android:src="@drawable/publisherlogo" />
-    
+        android:text="@string/assetExtractor_initializing"
+        style="@style/QuestSubtitle" />
+
 </LinearLayout>
