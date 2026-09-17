@@ -947,6 +947,10 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         QuestXr.setQuad(QuestXr.QUAD_DOCK, dockVisible, QuestXr.ATTACH_GAME, 0.0f, dockY, 0.06f, 0.0f,
                 XR_DOCK_SIZE, true, 0.0f, false);
         QuestXr.setPointerEnabled(menuOpen || dockVisible);
+        if (dockVisible) {
+            // Keeps the slot on the dock in step with the menu
+            mQuestSpatialDock.refresh();
+        }
 
         QuestXr.setController3dVisible(mXrControllerMode == QuestN64Overlay.MODE_HANDS);
         final float width = mXrScreenSize * 0.35f;
