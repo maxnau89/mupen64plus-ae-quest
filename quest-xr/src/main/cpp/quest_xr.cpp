@@ -142,6 +142,7 @@ struct PassthroughFns {
 
 struct XrState {
     jobject activity = nullptr;
+    jobject loaderContext = nullptr;  // separate reference, outlives this state (see gLoaderContext)
     jobject listener = nullptr;
     jmethodID onInput = nullptr;
     jmethodID onSessionState = nullptr;
@@ -223,8 +224,8 @@ struct XrState {
 };
 
 JavaVM* gVm = nullptr;
-// Application context for the OpenXR loader. It must outlive every session: the runtime keeps using
-// it after the loader unloaded and reloaded it, so it is never released.
+// Activity the OpenXR loader was initialized with. The runtime associates sessions with it and keeps
+// using it until the loader is initialized again, so it is only released after the next initialization.
 jobject gLoaderContext = nullptr;
 XrState* gXr = nullptr;
 
@@ -1286,7 +1287,7 @@ bool createXrSession(XrState& xr, jint gameWidth, jint gameHeight, jint menuWidt
         }
         XrLoaderInitInfoAndroidKHR loaderInfo{XR_TYPE_LOADER_INIT_INFO_ANDROID_KHR};
         loaderInfo.applicationVM = gVm;
-        loaderInfo.applicationContext = gLoaderContext;
+        loaderInfo.applicationContext = xr.loaderContext;
         if (!check(initializeLoader(reinterpret_cast<XrLoaderInitInfoBaseHeaderKHR*>(&loaderInfo)),
                    "xrInitializeLoaderKHR")) {
             return false;
@@ -1403,18 +1404,9 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, j
         return JNI_FALSE;
     }
 
-    if (gLoaderContext == nullptr) {
-        jclass activityClass = env->GetObjectClass(activity);
-        jmethodID getApplicationContext =
-            env->GetMethodID(activityClass, "getApplicationContext", "()Landroid/content/Context;");
-        jobject context = env->CallObjectMethod(activity, getApplicationContext);
-        gLoaderContext = env->NewGlobalRef(context);
-        env->DeleteLocalRef(context);
-        env->DeleteLocalRef(activityClass);
-    }
-
     auto* xr = new XrState();
     xr->activity = env->NewGlobalRef(activity);
+    xr->loaderContext = env->NewGlobalRef(activity);
     xr->listener = env->NewGlobalRef(listener);
     jclass listenerClass = env->GetObjectClass(listener);
     xr->onInput = env->GetMethodID(listenerClass, "onXrInput", "(FFFFFFFFI)V");
@@ -1429,6 +1421,11 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeCreate(JNIEnv* env, j
 
     const bool created = createXrSession(*xr, gameWidth, gameHeight, menuWidth, menuHeight,
                                          controllerWidth, controllerHeight);
+    // The loader now uses this activity; the previous one may be released
+    if (gLoaderContext != nullptr) {
+        env->DeleteGlobalRef(gLoaderContext);
+    }
+    gLoaderContext = xr->loaderContext;
     // The frame thread makes the context current again
     if (xr->eglDisplay != EGL_NO_DISPLAY) {
         eglMakeCurrent(xr->eglDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
