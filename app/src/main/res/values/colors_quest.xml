@@ -6,6 +6,7 @@
     <color name="quest_text_secondary">#9C9897</color>
     <color name="quest_text_tertiary">#747273</color>
     <color name="quest_slab_fill">#F0121212</color>
+    <color name="quest_slab_ground">#FF121212</color>
     <color name="quest_slab_edge">#38EFEFEF</color>
     <color name="quest_rail_fill">#59000000</color>
     <color name="quest_panel_fill">#1C1C1C</color>

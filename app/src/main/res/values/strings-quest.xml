@@ -50,4 +50,35 @@
     <string name="quest_game_resumeHint">Resume starts from the last automatic save. Restart resets the game.</string>
     <string name="quest_game_back">Back to library</string>
     <string name="quest_game_settingsSummary">Overrides just for this ROM</string>
+    <string name="quest_settings_subtitle">Every category is one click away</string>
+    <string name="quest_settings_library">ROM folders, cover art, sorting</string>
+    <string name="quest_settings_display">Resolution, aspect ratio, video plug-in</string>
+    <string name="quest_settings_shaders">CRT and scaling shaders</string>
+    <string name="quest_settings_audio">Output, buffering, speed sync</string>
+    <string name="quest_settings_input">Controllers, mapping, deadzone</string>
+    <string name="quest_settings_data">Save states, import and export</string>
+    <string name="quest_settings_netplay">Server, client, player mapping</string>
+    <string name="quest_settings_achievements">RetroAchievements account</string>
+    <string name="quest_profiles_subtitle">Reusable sets of settings</string>
+    <string name="quest_profiles_defaults">Default emulation and controller profiles</string>
+    <string name="quest_profiles_emulation">Plug-ins and emulation settings</string>
+    <string name="quest_profiles_controller">Button mappings for controllers</string>
+    <string name="quest_tools_subtitle">Maintenance and diagnostics</string>
+    <string name="quest_tools_extract">Import a high resolution texture pack</string>
+    <string name="quest_tools_clear">Delete installed texture packs</string>
+    <string name="quest_tools_clearShaderCache">Shaders are rebuilt on the next start</string>
+    <string name="quest_tools_importExport">Back up saves and settings</string>
+    <string name="quest_tools_logcat">Show the app log</string>
+    <string name="quest_tools_hardwareInfo">Device and GPU details</string>
+    <string name="quest_about_subtitle">Mupen64Plus AE for Meta Quest</string>
+    <string name="quest_about_version">Version and build</string>
+    <string name="quest_about_credits">The people behind Mupen64Plus</string>
+    <string name="quest_about_language">Override the app language</string>
+    <string name="quest_about_faq">Frequently asked questions</string>
+    <string name="quest_about_forum">Community support</string>
+    <string name="quest_about_diagnostics">Check buttons and axes</string>
+    <string name="quest_about_reportBug">Report a problem upstream</string>
+    <string name="quest_about_model">3D controller model</string>
+    <string name="quest_about_modelSummary">\"N64 Controller\" by Marshle, CC BY 4.0</string>
+    <string name="quest_about_modelUri" translatable="false">https://sketchfab.com/3d-models/n64-controller-8fb694b8c4bf4bbb8bc66f38503f4ffb</string>
 </resources>

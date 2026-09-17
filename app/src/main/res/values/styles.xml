@@ -54,15 +54,49 @@
     <style name="MupenTheme_Dark.NoActionBar" parent="Theme.AppCompat.NoActionBar">
         <item name="android:fontFamily">@string/default_font</item>
         <item name="android:navigationBarColor">@color/mupen_black</item>
-        <item name="android:textSize">17sp</item>
+        <item name="android:textSize">@dimen/quest_text_base</item>
         <item name="android:statusBarColor">@color/mupen_black</item>
+        <!-- Quest design system: slab ground, accent, VR type sizes and 72dp ray targets -->
+        <item name="android:windowBackground">@color/quest_slab_ground</item>
+        <item name="android:colorBackground">@color/quest_slab_ground</item>
+        <item name="colorPrimary">@color/quest_slab_ground</item>
+        <item name="colorPrimaryDark">@color/quest_slab_ground</item>
+        <item name="colorAccent">@color/quest_accent</item>
+        <item name="android:textColorPrimary">@color/quest_text_primary</item>
+        <item name="android:textColorSecondary">@color/quest_text_secondary</item>
+        <item name="textAppearanceListItem">@style/QuestListItem</item>
+        <item name="textAppearanceListItemSecondary">@style/QuestListItemSecondary</item>
+        <item name="android:textAppearanceListItem">@style/QuestListItem</item>
+        <item name="android:textAppearanceListItemSecondary">@style/QuestListItemSecondary</item>
+        <item name="listPreferredItemHeight">@dimen/quest_hit_comfort</item>
+        <item name="listPreferredItemHeightSmall">@dimen/quest_hit_comfort</item>
+        <item name="android:listPreferredItemHeightSmall">@dimen/quest_hit_comfort</item>
+        <item name="toolbarStyle">@style/QuestToolbar</item>
     </style>
 
     <style name="MupenTheme_Dark" parent="Theme.AppCompat">
         <item name="android:fontFamily">@string/default_font</item>
         <item name="android:navigationBarColor">@color/mupen_black</item>
-        <item name="android:textSize">17sp</item>
+        <item name="android:textSize">@dimen/quest_text_base</item>
         <item name="android:statusBarColor">@color/mupen_black</item>
+        <!-- Quest design system: slab ground, accent, VR type sizes and 72dp ray targets -->
+        <item name="android:windowBackground">@color/quest_slab_ground</item>
+        <item name="android:colorBackground">@color/quest_slab_ground</item>
+        <item name="colorPrimary">@color/quest_slab_ground</item>
+        <item name="colorPrimaryDark">@color/quest_slab_ground</item>
+        <item name="colorAccent">@color/quest_accent</item>
+        <item name="android:textColorPrimary">@color/quest_text_primary</item>
+        <item name="android:textColorSecondary">@color/quest_text_secondary</item>
+        <item name="textAppearanceListItem">@style/QuestListItem</item>
+        <item name="textAppearanceListItemSecondary">@style/QuestListItemSecondary</item>
+        <item name="android:textAppearanceListItem">@style/QuestListItem</item>
+        <item name="android:textAppearanceListItemSecondary">@style/QuestListItemSecondary</item>
+        <item name="listPreferredItemHeight">@dimen/quest_hit_comfort</item>
+        <item name="listPreferredItemHeightSmall">@dimen/quest_hit_comfort</item>
+        <item name="android:listPreferredItemHeightSmall">@dimen/quest_hit_comfort</item>
+        <item name="toolbarStyle">@style/QuestToolbar</item>
+        <item name="actionBarStyle">@style/QuestActionBar</item>
+        <item name="actionBarSize">88dp</item>
     </style>
 
     <style name="MupenTheme_Dark_Sidebar" parent="MupenTheme_Dark">

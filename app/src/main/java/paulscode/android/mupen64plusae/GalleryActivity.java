@@ -25,27 +25,18 @@ import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Configuration;
-import android.content.res.Resources;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
-import android.media.ThumbnailUtils;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.TextUtils;
 import android.util.Log;
-import android.util.TypedValue;
-import android.view.KeyEvent;
-import android.view.MenuItem;
 import android.view.PointerIcon;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.ImageView;
-import android.view.Menu;
 import android.view.WindowManager;
 import android.view.inputmethod.InputMethodManager;
 
@@ -53,24 +44,17 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
-import androidx.appcompat.app.ActionBarDrawerToggle;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.SearchView;
 import androidx.appcompat.widget.SearchView.OnQueryTextListener;
 import androidx.appcompat.widget.Toolbar;
 import androidx.coordinatorlayout.widget.CoordinatorLayout;
-import androidx.core.content.pm.ShortcutInfoCompat;
-import androidx.core.content.pm.ShortcutManagerCompat;
-import androidx.core.graphics.drawable.IconCompat;
-import androidx.core.view.GravityCompat;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
-import androidx.drawerlayout.widget.DrawerLayout;
 import androidx.fragment.app.FragmentManager;
 import androidx.recyclerview.widget.GridLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.floatingactionbutton.FloatingActionButton;
 
 import java.io.File;
 import java.io.UnsupportedEncodingException;
@@ -79,7 +63,6 @@ import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
-import paulscode.android.mupen64plusae.GameSidebar.GameSidebarActionHandler;
 import paulscode.android.mupen64plusae.dialog.ConfirmationDialog;
 import paulscode.android.mupen64plusae.dialog.ConfirmationDialog.PromptConfirmListener;
 import paulscode.android.mupen64plusae.dialog.LocaleDialog;
@@ -100,7 +83,7 @@ import paulscode.android.mupen64plusae.util.LocaleContextWrapper;
 import paulscode.android.mupen64plusae.util.Notifier;
 import paulscode.android.mupen64plusae.game.xr.QuestXr;
 
-public class GalleryActivity extends AppCompatActivity implements GameSidebarActionHandler, PromptConfirmListener,
+public class GalleryActivity extends AppCompatActivity implements PromptConfirmListener,
         GalleryRefreshFinishedListener
 {
     // Saved instance states
@@ -130,10 +113,7 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
 
     // Widgets
     private RecyclerView mGridView;
-    private DrawerLayout mDrawerLayout = null;
-    private ActionBarDrawerToggle mDrawerToggle;
-    private GameSidebar mDrawerList;
-    private GameSidebar mGameSidebar;
+    private View mRootLayout = null;
 
     // Searching
     private SearchView mSearchView;
@@ -148,7 +128,6 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
 
     // Misc.
     private GalleryItem mSelectedItem = null;
-    private boolean mDragging = false;
 
     private ScanRomsFragment mCacheRomInfoFragment = null;
 
@@ -184,11 +163,6 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
 
                     if (mSearchView != null) {
                         mSearchView.setQuery( mSearchQuery, true );
-                    }
-
-                    if( mDrawerLayout.isDrawerOpen( GravityCompat.START ) )
-                    {
-                        mDrawerLayout.closeDrawer( GravityCompat.START );
                     }
 
                     if(mGameStartedExternally)
@@ -368,36 +342,6 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         setContentView( R.layout.gallery_activity );
         mGridView = findViewById( R.id.gridview );
 
-        FloatingActionButton floatingActionButton = findViewById(R.id.menuItem_refreshRoms);
-
-        if (floatingActionButton != null) {
-            mGridView.addOnScrollListener(
-                    new RecyclerView.OnScrollListener()
-                    {
-                        @Override
-                        public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState)
-                        {
-                            super.onScrollStateChanged(recyclerView, newState);
-
-                            if(newState == RecyclerView.SCROLL_STATE_IDLE)
-                            {
-                                floatingActionButton.show();
-                            }
-                            else
-                            {
-                                floatingActionButton.hide();
-                            }
-                        }
-
-                        @Override
-                        public void onScrolled(@NonNull RecyclerView recyclerView, int dx, int dy)
-                        {
-                            super.onScrolled(recyclerView, dx, dy);
-                        }
-                    }
-            );
-        }
-
         // Add the toolbar to the activity (which supports the fancy menu/arrow animation)
         final Toolbar toolbar = findViewById( R.id.toolbar );
         toolbar.setTitle( R.string.app_name );
@@ -410,101 +354,8 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
 
         setSupportActionBar( toolbar );
 
-        // Configure the navigation drawer
-        mDrawerLayout = findViewById( R.id.drawerLayout );
-        mDrawerToggle = new ActionBarDrawerToggle( this, mDrawerLayout, toolbar, 0, 0 )
-        {
-            @Override
-            public void onDrawerStateChanged( int newState )
-            {
-                // Intercepting the drawer open animation and re-closing it causes onDrawerClosed to
-                // not fire,
-                // So detect when this happens and wait until the drawer closes to handle it
-                // manually
-                if( newState == DrawerLayout.STATE_DRAGGING )
-                {
-                    // INTERCEPTED!
-                    mDragging = true;
-                    hideSoftKeyboard();
-                }
-                else if( newState == DrawerLayout.STATE_IDLE )
-                {
-                    if( mDragging && !mDrawerLayout.isDrawerOpen( GravityCompat.START ) )
-                    {
-                        // onDrawerClosed from dragging it
-                        mDragging = false;
-                        mDrawerList.setVisibility( View.VISIBLE );
-                        mGameSidebar.setVisibility( View.GONE );
-                        mSelectedItem = null;
-                    }
-                }
-            }
-
-            @Override
-            public void onDrawerClosed( View drawerView )
-            {
-                // Hide the game information sidebar
-                mDrawerList.setVisibility( View.VISIBLE );
-                mGameSidebar.setVisibility( View.GONE );
-                mGridView.requestFocus();
-
-                if(mGridView.getAdapter() != null && mGridView.getAdapter().getItemCount() != 0)
-                {
-                    mGridView.getAdapter().notifyItemChanged(0);
-                }
-
-                mSelectedItem = null;
-
-                super.onDrawerClosed( drawerView );
-            }
-
-            @Override
-            public void onDrawerOpened( View drawerView )
-            {
-                hideSoftKeyboard();
-                super.onDrawerOpened( drawerView );
-
-                mDrawerList.requestFocus();
-                mDrawerList.setSelection(0);
-            }
-        };
-
-        mDrawerToggle.setDrawerIndicatorEnabled(false);
-
-        mDrawerLayout.addDrawerListener( mDrawerToggle );
-
-        // Configure the list in the navigation drawer
-        mDrawerList = findViewById( R.id.drawerNavigation );
-        mDrawerList.setMenuResource( R.menu.gallery_drawer );
-
-        // Set up the header image in the navigation drawer
-        mDrawerList.setImage(R.drawable.ouya_icon);
-        mDrawerList.hideTitle();
+        mRootLayout = findViewById( R.id.drawerLayout );
         setupQuestRail();
-
-        //Remove touch screen profile configuration if in TV mode or on Meta Quest
-        if(mGlobalPrefs.isBigScreenMode || QuestXr.isQuestDevice())
-        {
-            final MenuItem profileGroupItem = mDrawerList.getMenu().findItem(R.id.menuItem_profiles);
-            profileGroupItem.getSubMenu().removeItem(R.id.menuItem_touchscreenProfiles);
-            
-            final MenuItem settingsGroupItem = mDrawerList.getMenu().findItem(R.id.menuItem_settings);
-            settingsGroupItem.getSubMenu().removeItem(R.id.menuItem_categoryTouchscreen);
-        }
-
-        // Select the Library section
-        mDrawerList.getMenu().getItem( 0 ).setChecked( true );
-
-        // Handle menu item selections
-        mDrawerList.setOnClickListener(GalleryActivity.this::onOptionsItemSelected);
-
-        mDrawerList.requestFocus();
-
-        // Configure the game information drawer
-        mGameSidebar = findViewById( R.id.gameSidebar );
-
-        // Handle events from the side bar
-        mGameSidebar.setActionHandler(this, R.menu.gallery_game_drawer);
 
         // find the retained fragment on activity restarts
         final FragmentManager fm = getSupportFragmentManager();
@@ -528,19 +379,6 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
 
         ViewCompat.setOnApplyWindowInsetsListener(coordLayout, (v, insets) -> {
 
-            Resources r = getResources();
-            int margin = (int) TypedValue.applyDimension(
-                    TypedValue.COMPLEX_UNIT_DIP,
-                    24,
-                    r.getDisplayMetrics()
-            );
-
-            if (floatingActionButton != null) {
-                CoordinatorLayout.LayoutParams params = (CoordinatorLayout.LayoutParams)floatingActionButton.getLayoutParams();
-                params.bottomMargin = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom + margin;
-                floatingActionButton.setLayoutParams(params);
-            }
-
             ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams)coordLayout.getLayoutParams();
             params.topMargin = insets.getInsets(WindowInsetsCompat.Type.systemBars()).top;
             params.rightMargin = insets.getInsets(WindowInsetsCompat.Type.systemBars()).right;
@@ -549,12 +387,12 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
             return insets;
         });
 
-        mDrawerLayout.setOnHoverListener((v, event) -> {
+        mRootLayout.setOnHoverListener((v, event) -> {
             mHandler.postDelayed(() -> v.setPointerIcon(PointerIcon.getSystemIcon(GalleryActivity.this, PointerIcon.TYPE_ARROW)), 100);
             return false;
         });
 
-        mDrawerLayout.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+        mRootLayout.addOnLayoutChangeListener((v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             int oldWidth = oldRight - oldLeft;
             int oldHeight = oldBottom - oldTop;
             if( v.getWidth() != oldWidth || v.getHeight() != oldHeight )
@@ -580,13 +418,13 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
-                if( mDrawerLayout.isDrawerOpen( GravityCompat.START ) )
-                {
-                    mDrawerLayout.closeDrawer( GravityCompat.START );
-                }
-                else if (isQuestGameDetailShown())
+                if (isQuestGameDetailShown())
                 {
                     hideQuestGameDetail();
+                }
+                else if (mQuestSection != QuestSection.LIBRARY)
+                {
+                    showQuestSection(QuestSection.LIBRARY);
                 }
                 else if(mSearchView != null && !TextUtils.isEmpty(mSearchQuery)) {
                     mSearchQuery = "";
@@ -621,9 +459,6 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         {
             mRefreshNeeded = false;
             reloadCacheAndRefreshGrid();
-
-            mGameSidebar.setVisibility( View.GONE );
-            mDrawerList.setVisibility( View.VISIBLE );
         }
 
         // This is called here rather than onCreate otherwise onQueryTextChange is called on creation
@@ -674,20 +509,6 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         if (imm != null) {
             imm.hideSoftInputFromWindow( mSearchView.getWindowToken(), 0 );
         }
-    }
-
-    @Override
-    protected void onPostCreate( Bundle savedInstanceState )
-    {
-        super.onPostCreate( savedInstanceState );
-        mDrawerToggle.syncState();
-    }
-
-    @Override
-    public void onConfigurationChanged( @NonNull Configuration newConfig )
-    {
-        super.onConfigurationChanged( newConfig );
-        mDrawerToggle.onConfigurationChanged( newConfig );
     }
 
     public void createSearchMenu()
@@ -790,207 +611,46 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         }
     }
 
-    @Override
-    public boolean onOptionsItemSelected( MenuItem item )
-    {
-        if (item.getItemId() == R.id.menuItem_refreshRoms) {
-            Intent intent = new Intent(this, ScanRomsActivity.class);
-            mLaunchScanRoms.launch(intent);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_categoryLibrary) {
-            tagForRefreshNeeded();
-            ActivityHelper.startLibraryPrefsActivity(this);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_categoryDisplay) {
-            tagForRefreshNeeded();
-            ActivityHelper.startDisplayPrefsActivity( this );
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_categoryShaders) {
-            tagForRefreshNeeded();
-            ActivityHelper.startShadersPrefsActivity( this );
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_categoryAudio) {
-            ActivityHelper.startAudioPrefsActivity( this );
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_categoryTouchscreen) {
-            tagForRefreshNeeded();
-            ActivityHelper.startTouchscreenPrefsActivity( this );
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_categoryInput) {
-            ActivityHelper.startInputPrefsActivity( this );
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_categoryData) {
-            tagForRefreshNeeded();
-            ActivityHelper.startDataPrefsActivity( this );
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_categoryNetplay) {
-            ActivityHelper.startNetplayPrefsActivity( this );
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_categoryRetroAchievements) {
-            ActivityHelper.startRetroAchievementsPrefsActivity( this );
-            return true;
-         } else if (item.getItemId() == R.id.menuItem_categoryDefaults) {
-            ActivityHelper.startDefaultPrefsActivity( this );
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_emulationProfiles) {
-            ActivityHelper.startManageEmulationProfilesActivity(this);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_touchscreenProfiles) {
-            ActivityHelper.startManageTouchscreenProfilesActivity(this);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_controllerProfiles) {
-            ActivityHelper.startManageControllerProfilesActivity(this);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_faq) {
-            final Popups pop = Popups.newInstance(this, STATE_FAQ_POPUP);
-            final FragmentManager fm = getSupportFragmentManager();
-            pop.show(fm, STATE_FAQ_POPUP);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_helpForum) {
-            ActivityHelper.launchUri(this, R.string.uri_forum);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_controllerDiagnostics) {
-            ActivityHelper.startDiagnosticActivity(this);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_reportBug) {
-            ActivityHelper.launchUri(this, R.string.uri_bugReport);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_appVersion) {
-            final Popups pop = Popups.newInstance(this, STATE_SHOW_APP_VERSION_POPUP);
-            final FragmentManager fm = getSupportFragmentManager();
-            pop.show(fm, STATE_SHOW_APP_VERSION_POPUP);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_logcat) {
-            ActivityHelper.startLogcatActivity(this);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_hardwareInfo) {
-            final Popups pop = Popups.newInstance(this, STATE_HARDWARE_INFO_POPUP);
-            final FragmentManager fm = getSupportFragmentManager();
-            pop.show(fm, STATE_HARDWARE_INFO_POPUP);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_credits) {
-            ActivityHelper.launchUri(GalleryActivity.this, R.string.uri_credits);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_localeOverride) {
-            final CharSequence title = getText( R.string.menuItem_localeOverride );
-            final LocaleDialog localeDialog = LocaleDialog.newInstance(title.toString());
-            final FragmentManager fm = getSupportFragmentManager();
-            localeDialog.show(fm, STATE_LOCALE_DIALOG);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_extract) {
-            ActivityHelper.starExtractTextureActivity(this);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_clear) {
-            ActivityHelper.startDeleteTextureActivity(this);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_clearShaderCache) {
-            final CharSequence title = getText( R.string.confirm_title );
-            final CharSequence message = getText( R.string.menuItem_ConfirmationClearShaderCache );
+    private enum GameAction { RESUME, RESTART, NETPLAY_CONNECT, NETPLAY_SERVER, SETTINGS, REMOVE }
 
-            final ConfirmationDialog confirmationDialog =
-                    ConfirmationDialog.newInstance(CLEAR_SHADER_CACHE_DIALOG_ID, title.toString(), message.toString());
-
-            final FragmentManager fm = getSupportFragmentManager();
-            confirmationDialog.show(fm, STATE_CLEAR_SHADERCACHE_DIALOG);
-            return true;
-        } else if (item.getItemId() == R.id.menuItem_importExportData) {
-            ActivityHelper.startImportExportActivity(this);
-            return true;
-        } else {
-            return super.onOptionsItemSelected(item);
-        }
-    }
-
-    private void createGameShortcut(GalleryItem item)
-    {
-        if (ShortcutManagerCompat.isRequestPinShortcutSupported(this)) {
-
-            Intent gameIntent = new Intent(this, SplashActivity.class);
-            gameIntent.putExtra(GalleryActivity.KEY_IS_LEANBACK, true);
-            gameIntent.putExtra(GalleryActivity.KEY_IS_SHORTCUT, true);
-            gameIntent.putExtra(ActivityHelper.Keys.ROM_PATH, item.romUri);
-            gameIntent.putExtra(ActivityHelper.Keys.ZIP_PATH, item.zipUri);
-            gameIntent.putExtra(ActivityHelper.Keys.ROM_MD5, item.md5);
-            gameIntent.putExtra(ActivityHelper.Keys.ROM_CRC, item.crc);
-            gameIntent.putExtra(ActivityHelper.Keys.ROM_HEADER_NAME, item.headerName);
-            gameIntent.putExtra(ActivityHelper.Keys.ROM_COUNTRY_CODE, (int) item.countryCode.getValue());
-            gameIntent.putExtra(ActivityHelper.Keys.ROM_ART_PATH, item.artPath);
-            gameIntent.putExtra(ActivityHelper.Keys.ROM_GOOD_NAME, item.goodName);
-            gameIntent.putExtra(ActivityHelper.Keys.ROM_DISPLAY_NAME, item.displayName);
-            gameIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
-            gameIntent.setAction("LOCATION_SHORTCUT");
-
-            Bitmap bitmap;
-            if (item.artBitmap != null) {
-                bitmap = item.artBitmap.getBitmap();
-            } else {
-                bitmap = BitmapFactory.decodeResource(getResources(), R.drawable.default_coverart);
-            }
-
-            if (bitmap != null) {
-                int dimension = Math.min(bitmap.getWidth(), bitmap.getHeight());
-                Bitmap croppedBitmap = ThumbnailUtils.extractThumbnail(bitmap, dimension, dimension);
-
-                IconCompat icon = IconCompat.createWithBitmap(croppedBitmap);
-                ShortcutInfoCompat shortcut = new ShortcutInfoCompat.Builder(this, item.md5)
-                        .setIcon(icon)
-                        .setIntent(gameIntent)
-                        .setShortLabel(item.displayName)
-                        .build();
-
-                try {
-                    ShortcutManagerCompat.requestPinShortcut(this, shortcut, null);
-                } catch (java.lang.IllegalStateException e) {
-                    e.printStackTrace();
-                }
-            }
-        }
-    }
-
-    @Override
-    public void onGameSidebarAction(MenuItem menuItem)
-    {
-        handleGameAction(menuItem.getItemId());
-    }
-
-    private void handleGameAction(int itemId)
+    private void handleGameAction(GameAction action)
     {
         final GalleryItem item = mSelectedItem;
         if( item == null || item.romUri == null)
             return;
 
-        if (itemId == R.id.menuItem_resume) {
+        if (action == GameAction.RESUME) {
             launchGameActivity( item.romUri,
                     item.zipUri,
                     item.md5, item.crc, item.headerName,
                     item.countryCode.getValue(), item.artPath, item.goodName, item.displayName, false,
                     false, false);
-        } else if (itemId == R.id.menuItem_start) {
+        } else if (action == GameAction.RESTART) {
             launchGameActivity(item.romUri,
                     item.zipUri,
                     item.md5, item.crc,
                     item.headerName, item.countryCode.getValue(), item.artPath,
                     item.goodName, item.displayName, true,
                     false, false);
-        } else if (itemId == R.id.menuItem_connectNetplayServer) {
+        } else if (action == GameAction.NETPLAY_CONNECT) {
             launchGameActivity(item.romUri,
                     item.zipUri,
                     item.md5, item.crc,
                     item.headerName, item.countryCode.getValue(), item.artPath,
                     item.goodName, item.displayName, true,
                     true, false);
-        } else if (itemId == R.id.menuItem_startNetplayServer) {
+        } else if (action == GameAction.NETPLAY_SERVER) {
             launchGameActivity(item.romUri,
                     item.zipUri,
                     item.md5, item.crc,
                     item.headerName, item.countryCode.getValue(), item.artPath,
                     item.goodName, item.displayName, true,
                     true, true);
-        } else if (itemId == R.id.menuItem_settings) {
+        } else if (action == GameAction.SETTINGS) {
             tagForRefreshNeeded();
             ActivityHelper.startGamePrefsActivity( GalleryActivity.this, item.romUri,
                     item.md5, item.crc, item.headerName, item.goodName, item.displayName, item.countryCode.getValue());
-        } else if (itemId == R.id.menuItem_remove) {
+        } else if (action == GameAction.REMOVE) {
             final CharSequence title = getText( R.string.confirm_title );
             final CharSequence message = getText( R.string.confirmRemoveFromLibrary_message );
 
@@ -999,8 +659,6 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
 
             final FragmentManager fm = getSupportFragmentManager();
             confirmationDialog.show(fm, STATE_REMOVE_FROM_LIBRARY_DIALOG);
-        } else if (itemId == R.id.menuItem_createShortcut) {
-            createGameShortcut(item);
         }
     }
 
@@ -1015,7 +673,7 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
             {
                 mConfig.remove(mSelectedItem.md5);
                 mConfig.save();
-                mDrawerLayout.closeDrawer( GravityCompat.START, false );
+                hideQuestGameDetail();
                 refreshGridAsync();
             }
 
@@ -1034,7 +692,6 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
     private void showQuestGameDetail(GalleryItem item)
     {
         mSelectedItem = item;
-        mDrawerLayout.closeDrawer(GravityCompat.START);
 
         final ImageView art = findViewById(R.id.questGameArt);
         if (item.artPath != null && FileUtil.isFileImage(new File(item.artPath))) {
@@ -1047,19 +704,19 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         ((TextView) findViewById(R.id.questGameMeta)).setText(
                 (item.headerName != null ? item.headerName.trim() : "") + " \u00B7 " + item.countryCode.toString());
 
-        findViewById(R.id.questGameResume).setOnClickListener(v -> handleGameAction(R.id.menuItem_resume));
-        findViewById(R.id.questGameRestart).setOnClickListener(v -> handleGameAction(R.id.menuItem_start));
+        findViewById(R.id.questGameResume).setOnClickListener(v -> handleGameAction(GameAction.RESUME));
+        findViewById(R.id.questGameRestart).setOnClickListener(v -> handleGameAction(GameAction.RESTART));
 
         final LinearLayout actions = findViewById(R.id.questGameActions);
         actions.removeAllViews();
         addQuestActionRow(actions, R.drawable.ic_sliders, getString(R.string.menuItem_settings),
-                getString(R.string.quest_game_settingsSummary), R.id.menuItem_settings);
+                getString(R.string.quest_game_settingsSummary), GameAction.SETTINGS);
         addQuestActionRow(actions, R.drawable.ic_users, getString(R.string.actionStartNetplay_title),
-                getString(R.string.actionStartNetplay_summary), R.id.menuItem_startNetplayServer);
+                getString(R.string.actionStartNetplay_summary), GameAction.NETPLAY_SERVER);
         addQuestActionRow(actions, R.drawable.ic_users, getString(R.string.actionConnectNetplay_title),
-                getString(R.string.actionConnectNetplay_summary), R.id.menuItem_connectNetplayServer);
+                getString(R.string.actionConnectNetplay_summary), GameAction.NETPLAY_CONNECT);
         addQuestActionRow(actions, R.drawable.ic_undo, getString(R.string.actionRemove_title),
-                getString(R.string.actionRemove_summary), R.id.menuItem_remove);
+                getString(R.string.actionRemove_summary), GameAction.REMOVE);
 
         ((TextView) findViewById(R.id.questTitle)).setText(R.string.quest_game_title);
         ((TextView) findViewById(R.id.questSubtitle)).setText(item.displayName);
@@ -1068,6 +725,9 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         back.setVisibility(View.VISIBLE);
         back.setOnClickListener(v -> hideQuestGameDetail());
         findViewById(R.id.gallery_empty_icon).setVisibility(View.INVISIBLE);
+        findViewById(R.id.questSection).setVisibility(View.GONE);
+        mQuestSection = QuestSection.LIBRARY;
+        updateQuestRailSelection();
         mGridView.setVisibility(View.INVISIBLE);
         findViewById(R.id.questGameDetail).setVisibility(View.VISIBLE);
         findViewById(R.id.questGameResume).requestFocus();
@@ -1082,6 +742,8 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
     private void hideQuestGameDetail()
     {
         mSelectedItem = null;
+        mQuestSection = QuestSection.LIBRARY;
+        updateQuestRailSelection();
         findViewById(R.id.questGameDetail).setVisibility(View.GONE);
         mGridView.setVisibility(View.VISIBLE);
         ((TextView) findViewById(R.id.questTitle)).setText(R.string.galleryLibrary);
@@ -1092,13 +754,13 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         }
     }
 
-    private void addQuestActionRow(LinearLayout parent, int icon, String title, String summary, int actionId)
+    private void addQuestActionRow(LinearLayout parent, int icon, String title, String summary, GameAction action)
     {
         final View row = getLayoutInflater().inflate(R.layout.quest_action_row, parent, false);
         ((ImageView) row.findViewById(R.id.rowIcon)).setImageResource(icon);
         ((TextView) row.findViewById(R.id.rowTitle)).setText(title);
         ((TextView) row.findViewById(R.id.rowSummary)).setText(summary);
-        row.setOnClickListener(v -> handleGameAction(actionId));
+        row.setOnClickListener(v -> handleGameAction(action));
         parent.addView(row);
     }
 
@@ -1216,7 +878,7 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         // The rail takes part of the window, measure the grid itself once it is laid out
         int widthPixels = mGridView.getWidth() > 0 ?
                 mGridView.getWidth() - mGridView.getPaddingLeft() - mGridView.getPaddingRight() + galleryHalfSpacing * 2 :
-                mDrawerLayout.getWidth();
+                mRootLayout.getWidth();
 
         int width = widthPixels - galleryHalfSpacing * 2;
         width = Math.max(width, galleryHalfSpacing*4);
@@ -1291,12 +953,6 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         mConfig.put(romMd5, "lastPlayed", lastPlayed);
         mConfig.save();
 
-        ///Drawer layout can be null if this method is called from onCreate
-        if (mDrawerLayout != null) {
-            //Close drawer without animation
-            mDrawerLayout.closeDrawer(GravityCompat.START, false);
-        }
-
         tagForRefreshNeeded();
 
         mSelectedItem = null;
@@ -1324,34 +980,43 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         mLaunchGame.launch(intent);
     }
 
-    @Override
-    public boolean onKey(View view, int i, KeyEvent keyEvent) {
-        return false;
+    private enum QuestSection { LIBRARY, SETTINGS, PROFILES, TOOLS, ABOUT }
+
+    private QuestSection mQuestSection = QuestSection.LIBRARY;
+
+    /** An entry of a section: opens a settings screen, a tool or a link. */
+    private static class QuestEntry
+    {
+        final int icon;
+        final String title;
+        final String summary;
+        final Runnable action;
+
+        QuestEntry(int icon, String title, String summary, Runnable action)
+        {
+            this.icon = icon;
+            this.title = title;
+            this.summary = summary;
+            this.action = action;
+        }
     }
 
-    /** Quest rail: every top-level destination stays visible next to the library. */
+    /** Quest rail: every top-level destination stays visible, nothing is nested in a drawer. */
     private void setupQuestRail()
     {
-        setupQuestRailItem(R.id.railLibrary, R.drawable.ic_controller, R.string.galleryLibrary, v -> {
-            mDrawerLayout.closeDrawer(GravityCompat.START);
-            if (isQuestGameDetailShown()) {
-                hideQuestGameDetail();
-            }
-            if (mGridView.getLayoutManager() != null) {
-                mGridView.getLayoutManager().scrollToPosition(0);
-            }
-        });
+        setupQuestRailItem(R.id.railLibrary, R.drawable.ic_controller, R.string.galleryLibrary,
+                v -> showQuestSection(QuestSection.LIBRARY));
         setupQuestRailItem(R.id.railSettings, R.drawable.ic_settings, R.string.menuItem_settings,
-                v -> openQuestDrawerGroup(R.id.menuItem_settings));
+                v -> showQuestSection(QuestSection.SETTINGS));
         setupQuestRailItem(R.id.railProfiles, R.drawable.ic_sliders, R.string.menuItem_profiles,
-                v -> openQuestDrawerGroup(R.id.menuItem_profiles));
+                v -> showQuestSection(QuestSection.PROFILES));
         setupQuestRailItem(R.id.railAddRoms, R.drawable.ic_refresh, R.string.quest_rail_addRoms,
                 this::onFabRefreshRomsClick);
         setupQuestRailItem(R.id.railTools, R.drawable.ic_circuit, R.string.menuItem_Tools,
-                v -> openQuestDrawerGroup(R.id.menuItem_tools));
+                v -> showQuestSection(QuestSection.TOOLS));
         setupQuestRailItem(R.id.railAbout, R.drawable.ic_about, R.string.menuItem_about,
-                v -> openQuestDrawerGroup(R.id.menuItem_about));
-        findViewById(R.id.railLibrary).setSelected(true);
+                v -> showQuestSection(QuestSection.ABOUT));
+        updateQuestRailSelection();
     }
 
     private void setupQuestRailItem(int id, int icon, int label, View.OnClickListener listener)
@@ -1362,21 +1027,212 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         item.setOnClickListener(listener);
     }
 
-    /** Sections without their own screen yet open the drawer with just their group expanded. */
-    private void openQuestDrawerGroup(int groupId)
+    private void updateQuestRailSelection()
     {
-        mGameSidebar.setVisibility(View.GONE);
-        mDrawerList.setVisibility(View.VISIBLE);
-        final Menu menu = mDrawerList.getMenu();
-        for (int i = 0; i < menu.size(); ++i) {
-            if (menu.getItem(i).getItemId() == groupId) {
-                mDrawerList.expandGroup(i);
-                mDrawerList.setSelection(i);
-            } else {
-                mDrawerList.collapseGroup(i);
-            }
+        findViewById(R.id.railLibrary).setSelected(mQuestSection == QuestSection.LIBRARY);
+        findViewById(R.id.railSettings).setSelected(mQuestSection == QuestSection.SETTINGS);
+        findViewById(R.id.railProfiles).setSelected(mQuestSection == QuestSection.PROFILES);
+        findViewById(R.id.railTools).setSelected(mQuestSection == QuestSection.TOOLS);
+        findViewById(R.id.railAbout).setSelected(mQuestSection == QuestSection.ABOUT);
+    }
+
+    private void showQuestSection(QuestSection section)
+    {
+        if (isQuestGameDetailShown()) {
+            hideQuestGameDetail();
         }
-        mDrawerLayout.openDrawer(GravityCompat.START);
+        mQuestSection = section;
+        updateQuestRailSelection();
+
+        final View sectionView = findViewById(R.id.questSection);
+        final TextView title = findViewById(R.id.questTitle);
+        final TextView subtitle = findViewById(R.id.questSubtitle);
+        hideSoftKeyboard();
+
+        if (section == QuestSection.LIBRARY) {
+            sectionView.setVisibility(View.GONE);
+            mGridView.setVisibility(View.VISIBLE);
+            findViewById(R.id.questSearchPill).setVisibility(View.VISIBLE);
+            title.setText(R.string.galleryLibrary);
+            if (mGridView.getLayoutManager() != null) {
+                mGridView.getLayoutManager().scrollToPosition(0);
+            }
+            refreshGrid(mItemsCache, mRecentItemsCache);
+            return;
+        }
+
+        final List<QuestEntry> entries = new ArrayList<>();
+        switch (section) {
+            case SETTINGS:
+                title.setText(R.string.menuItem_settings);
+                subtitle.setText(R.string.quest_settings_subtitle);
+                buildQuestSettings(entries);
+                break;
+            case PROFILES:
+                title.setText(R.string.menuItem_profiles);
+                subtitle.setText(R.string.quest_profiles_subtitle);
+                buildQuestProfiles(entries);
+                break;
+            case TOOLS:
+                title.setText(R.string.menuItem_Tools);
+                subtitle.setText(R.string.quest_tools_subtitle);
+                buildQuestTools(entries);
+                break;
+            case ABOUT:
+                title.setText(R.string.menuItem_about);
+                subtitle.setText(R.string.quest_about_subtitle);
+                buildQuestAbout(entries);
+                break;
+            default:
+                break;
+        }
+
+        // Two columns of tiles
+        final LinearLayout tiles = findViewById(R.id.questSectionTiles);
+        tiles.removeAllViews();
+        final int gap = getResources().getDimensionPixelSize(R.dimen.quest_gap_min);
+        LinearLayout row = null;
+        for (int i = 0; i < entries.size(); ++i) {
+            if (i % 2 == 0) {
+                row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setBaselineAligned(false);
+                final LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                if (i > 0) {
+                    rowParams.topMargin = gap;
+                }
+                tiles.addView(row, rowParams);
+            }
+            final QuestEntry entry = entries.get(i);
+            final View tile = getLayoutInflater().inflate(R.layout.quest_category_tile, row, false);
+            ((ImageView) tile.findViewById(R.id.tileIcon)).setImageResource(entry.icon);
+            ((TextView) tile.findViewById(R.id.tileTitle)).setText(entry.title);
+            final TextView summary = tile.findViewById(R.id.tileSummary);
+            summary.setText(entry.summary);
+            summary.setVisibility(entry.summary.isEmpty() ? View.GONE : View.VISIBLE);
+            tile.setOnClickListener(v -> entry.action.run());
+            if (i % 2 == 1) {
+                ((LinearLayout.LayoutParams) tile.getLayoutParams()).setMarginStart(gap);
+            }
+            row.addView(tile);
+        }
+        if (entries.size() % 2 == 1 && row != null) {
+            // Keep the last tile at half width
+            final View spacer = new View(this);
+            final LinearLayout.LayoutParams spacerParams = new LinearLayout.LayoutParams(0, 1, 1);
+            spacerParams.setMarginStart(gap);
+            row.addView(spacer, spacerParams);
+        }
+
+        findViewById(R.id.questSearchPill).setVisibility(View.GONE);
+        findViewById(R.id.gallery_empty_icon).setVisibility(View.INVISIBLE);
+        mGridView.setVisibility(View.INVISIBLE);
+        sectionView.scrollTo(0, 0);
+        sectionView.setVisibility(View.VISIBLE);
+    }
+
+    private void buildQuestSettings(List<QuestEntry> entries)
+    {
+        entries.add(new QuestEntry(R.drawable.ic_display, getString(R.string.categoryDisplay_title),
+                getString(R.string.quest_settings_display), () -> {
+            tagForRefreshNeeded();
+            ActivityHelper.startDisplayPrefsActivity(this);
+        }));
+        entries.add(new QuestEntry(R.drawable.ic_picture, getString(R.string.categoryShaders_title),
+                getString(R.string.quest_settings_shaders), () -> {
+            tagForRefreshNeeded();
+            ActivityHelper.startShadersPrefsActivity(this);
+        }));
+        entries.add(new QuestEntry(R.drawable.ic_speaker, getString(R.string.categoryAudio_title),
+                getString(R.string.quest_settings_audio), () -> ActivityHelper.startAudioPrefsActivity(this)));
+        entries.add(new QuestEntry(R.drawable.ic_gamepad, getString(R.string.categoryInput_title),
+                getString(R.string.quest_settings_input), () -> ActivityHelper.startInputPrefsActivity(this)));
+        entries.add(new QuestEntry(R.drawable.ic_folder, getString(R.string.categoryLibrary_title),
+                getString(R.string.quest_settings_library), () -> {
+            tagForRefreshNeeded();
+            ActivityHelper.startLibraryPrefsActivity(this);
+        }));
+        entries.add(new QuestEntry(R.drawable.ic_storage, getString(R.string.categoryData_title),
+                getString(R.string.quest_settings_data), () -> {
+            tagForRefreshNeeded();
+            ActivityHelper.startDataPrefsActivity(this);
+        }));
+        entries.add(new QuestEntry(R.drawable.ic_users, getString(R.string.categoryNetplay_title),
+                getString(R.string.quest_settings_netplay), () -> ActivityHelper.startNetplayPrefsActivity(this)));
+        entries.add(new QuestEntry(R.drawable.ic_check, getString(R.string.categoryRetroAchievements_title),
+                getString(R.string.quest_settings_achievements),
+                () -> ActivityHelper.startRetroAchievementsPrefsActivity(this)));
+        // The touchscreen category has no use on Meta Quest
+        if (!QuestXr.isQuestDevice() && !mGlobalPrefs.isBigScreenMode) {
+            entries.add(new QuestEntry(R.drawable.ic_phone, getString(R.string.categoryTouchscreen_title), "", () -> {
+                tagForRefreshNeeded();
+                ActivityHelper.startTouchscreenPrefsActivity(this);
+            }));
+        }
+    }
+
+    private void buildQuestProfiles(List<QuestEntry> entries)
+    {
+        entries.add(new QuestEntry(R.drawable.ic_check, getString(R.string.menuItem_select_profiles),
+                getString(R.string.quest_profiles_defaults), () -> ActivityHelper.startDefaultPrefsActivity(this)));
+        entries.add(new QuestEntry(R.drawable.ic_sliders, getString(R.string.menuItem_emulationProfiles),
+                getString(R.string.quest_profiles_emulation),
+                () -> ActivityHelper.startManageEmulationProfilesActivity(this)));
+        entries.add(new QuestEntry(R.drawable.ic_gamepad, getString(R.string.menuItem_controllerProfiles),
+                getString(R.string.quest_profiles_controller),
+                () -> ActivityHelper.startManageControllerProfilesActivity(this)));
+        if (!QuestXr.isQuestDevice() && !mGlobalPrefs.isBigScreenMode) {
+            entries.add(new QuestEntry(R.drawable.ic_phone, getString(R.string.menuItem_touchscreenProfiles), "",
+                    () -> ActivityHelper.startManageTouchscreenProfilesActivity(this)));
+        }
+    }
+
+    private void buildQuestTools(List<QuestEntry> entries)
+    {
+        entries.add(new QuestEntry(R.drawable.ic_box, getString(R.string.menuItem_Extract),
+                getString(R.string.quest_tools_extract), () -> ActivityHelper.starExtractTextureActivity(this)));
+        entries.add(new QuestEntry(R.drawable.ic_undo, getString(R.string.menuItem_Clear),
+                getString(R.string.quest_tools_clear), () -> ActivityHelper.startDeleteTextureActivity(this)));
+        entries.add(new QuestEntry(R.drawable.ic_picture, getString(R.string.menuItem_ClearShaderCache),
+                getString(R.string.quest_tools_clearShaderCache), () -> {
+            final ConfirmationDialog confirmationDialog = ConfirmationDialog.newInstance(CLEAR_SHADER_CACHE_DIALOG_ID,
+                    getText(R.string.confirm_title).toString(),
+                    getText(R.string.menuItem_ConfirmationClearShaderCache).toString());
+            confirmationDialog.show(getSupportFragmentManager(), STATE_CLEAR_SHADERCACHE_DIALOG);
+        }));
+        entries.add(new QuestEntry(R.drawable.ic_save, getString(R.string.importExportActivity_title),
+                getString(R.string.quest_tools_importExport), () -> ActivityHelper.startImportExportActivity(this)));
+        entries.add(new QuestEntry(R.drawable.ic_debug, getString(R.string.menuItem_logcat),
+                getString(R.string.quest_tools_logcat), () -> ActivityHelper.startLogcatActivity(this)));
+        entries.add(new QuestEntry(R.drawable.ic_circuit, getString(R.string.menuItem_hardwareInfo),
+                getString(R.string.quest_tools_hardwareInfo), () -> Popups.newInstance(this, STATE_HARDWARE_INFO_POPUP)
+                .show(getSupportFragmentManager(), STATE_HARDWARE_INFO_POPUP)));
+    }
+
+    private void buildQuestAbout(List<QuestEntry> entries)
+    {
+        entries.add(new QuestEntry(R.drawable.ic_about, getString(R.string.menuItem_appVersion),
+                getString(R.string.quest_about_version), () -> Popups.newInstance(this, STATE_SHOW_APP_VERSION_POPUP)
+                .show(getSupportFragmentManager(), STATE_SHOW_APP_VERSION_POPUP)));
+        entries.add(new QuestEntry(R.drawable.ic_users, getString(R.string.menuItem_credits),
+                getString(R.string.quest_about_credits), () -> ActivityHelper.launchUri(this, R.string.uri_credits)));
+        entries.add(new QuestEntry(R.drawable.ic_location, getString(R.string.menuItem_localeOverride),
+                getString(R.string.quest_about_language), () -> LocaleDialog.newInstance(
+                getText(R.string.menuItem_localeOverride).toString())
+                .show(getSupportFragmentManager(), STATE_LOCALE_DIALOG)));
+        entries.add(new QuestEntry(R.drawable.ic_help, getString(R.string.menuItem_faq),
+                getString(R.string.quest_about_faq), () -> Popups.newInstance(this, STATE_FAQ_POPUP)
+                .show(getSupportFragmentManager(), STATE_FAQ_POPUP)));
+        entries.add(new QuestEntry(R.drawable.ic_users, getString(R.string.menuItem_helpForum),
+                getString(R.string.quest_about_forum), () -> ActivityHelper.launchUri(this, R.string.uri_forum)));
+        entries.add(new QuestEntry(R.drawable.ic_gamepad, getString(R.string.menuItem_controllerDiagnostics),
+                getString(R.string.quest_about_diagnostics), () -> ActivityHelper.startDiagnosticActivity(this)));
+        entries.add(new QuestEntry(R.drawable.ic_debug, getString(R.string.menuItem_reportBug),
+                getString(R.string.quest_about_reportBug), () -> ActivityHelper.launchUri(this, R.string.uri_bugReport)));
+        entries.add(new QuestEntry(R.drawable.ic_controller, getString(R.string.quest_about_model),
+                getString(R.string.quest_about_modelSummary), () -> ActivityHelper.launchUri(this,
+                R.string.quest_about_modelUri)));
     }
 
     private void updateQuestLibraryCount(List<GalleryItem> shownItems)
@@ -1393,11 +1249,6 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
         }
         final int total = mAllItems != null && !mAllItems.isEmpty() ? mAllItems.size() : shown;
         subtitle.setText(getString(R.string.quest_library_count, Math.min(shown, total), total));
-    }
-
-    public void onOpenDrawerButtonClicked(View view)
-    {
-        mDrawerLayout.openDrawer(GravityCompat.START);
     }
 
     public void onFabRefreshRomsClick(View view)

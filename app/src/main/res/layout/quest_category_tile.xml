@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- CategoryTile: glyph, title and a summary line, so a mis-aimed click is rare -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:layout_weight="1"
+    android:minHeight="@dimen/quest_hit_comfort"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="15dp"
+    android:paddingEnd="15dp"
+    android:paddingTop="12dp"
+    android:paddingBottom="12dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:background="@drawable/quest_tile_background"
+    android:stateListAnimator="@animator/quest_hover_lift">
+
+    <ImageView
+        android:id="@+id/tileIcon"
+        android:layout_width="28dp"
+        android:layout_height="28dp"
+        android:alpha="0.92"
+        android:importantForAccessibility="no" />
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="15dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tileTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            style="@style/QuestRowTitle" />
+
+        <TextView
+            android:id="@+id/tileSummary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            style="@style/QuestSubtitle" />
+    </LinearLayout>
+</LinearLayout>

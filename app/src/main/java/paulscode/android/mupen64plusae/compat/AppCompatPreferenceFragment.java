@@ -150,7 +150,7 @@ public class AppCompatPreferenceFragment extends PreferenceFragmentCompat
         // transparency
         Context context = getContext();
         if (context != null) {
-            view.setBackgroundColor(ContextCompat.getColor(context, R.color.mupen_black));
+            view.setBackgroundColor(ContextCompat.getColor(context, R.color.quest_slab_ground));
         }
 
         if (getActivity() instanceof OnFragmentCreationListener)

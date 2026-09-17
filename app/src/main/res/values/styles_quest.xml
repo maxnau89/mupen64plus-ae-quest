@@ -23,4 +23,38 @@
         <item name="android:textColor">@color/quest_rail_label</item>
         <item name="android:gravity">center</item>
     </style>
+
+    <style name="QuestListItem" parent="TextAppearance.AppCompat.Subhead">
+        <item name="android:textSize">@dimen/quest_text_base</item>
+        <item name="android:textColor">@color/quest_text_primary</item>
+    </style>
+
+    <style name="QuestListItemSecondary" parent="TextAppearance.AppCompat.Body1">
+        <item name="android:textSize">@dimen/quest_text_sm</item>
+        <item name="android:textColor">@color/quest_text_secondary</item>
+    </style>
+
+    <!-- Screen title bar of settings, profiles and tools: caps condensed title on the slab -->
+    <style name="QuestActionBar" parent="Widget.AppCompat.ActionBar.Solid">
+        <item name="background">@drawable/quest_action_bar_background</item>
+        <item name="titleTextStyle">@style/QuestActionBarTitle</item>
+        <item name="elevation">0dp</item>
+        <item name="contentInsetStart">28dp</item>
+    </style>
+
+    <style name="QuestActionBarTitle" parent="TextAppearance.AppCompat.Widget.ActionBar.Title">
+        <item name="android:fontFamily">sans-serif-condensed</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.06</item>
+        <item name="android:textSize">@dimen/quest_text_lg</item>
+        <item name="android:textColor">@color/quest_text_primary</item>
+    </style>
+
+    <!-- Toolbars inside screens (profile managers) share the action bar look -->
+    <style name="QuestToolbar" parent="Widget.AppCompat.Toolbar">
+        <item name="titleTextAppearance">@style/QuestActionBarTitle</item>
+        <item name="android:minHeight">88dp</item>
+        <item name="contentInsetStart">28dp</item>
+    </style>
 </resources>
