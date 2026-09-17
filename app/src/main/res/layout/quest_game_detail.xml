@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Game detail plate inside the library slab (ui_kits/quest_vr/VrGameDetailScreen) -->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/questGameDetail"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:visibility="gone"
+    android:background="@color/quest_slab_fill"
+    android:clipToPadding="false"
+    android:padding="@dimen/quest_slab_inset"
+    app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:baselineAligned="false">
+
+        <LinearLayout
+            android:layout_width="320dp"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="@drawable/quest_panel_raised"
+            android:elevation="8dp">
+
+            <ImageView
+                android:id="@+id/questGameArt"
+                android:layout_width="match_parent"
+                android:layout_height="222dp"
+                android:scaleType="fitXY"
+                android:src="@drawable/default_coverart"
+                android:importantForAccessibility="no" />
+
+            <TextView
+                android:id="@+id/questGameName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="15dp"
+                android:layout_marginEnd="15dp"
+                android:layout_marginTop="15dp"
+                style="@style/QuestRowTitle" />
+
+            <TextView
+                android:id="@+id/questGameMeta"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_margin="15dp"
+                android:fontFamily="monospace"
+                android:textSize="@dimen/quest_text_sm"
+                android:textColor="@color/quest_text_secondary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="24dp"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:id="@+id/questGameResume"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/actionResume_title"
+                    style="@style/QuestButton.Accent" />
+
+                <TextView
+                    android:id="@+id/questGameRestart"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="@dimen/quest_gap_min"
+                    android:text="@string/quest_game_restart"
+                    style="@style/QuestButton.Secondary" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/quest_gap_min"
+                android:text="@string/quest_game_resumeHint"
+                style="@style/QuestSubtitle" />
+
+            <LinearLayout
+                android:id="@+id/questGameActions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:orientation="vertical"
+                android:divider="@drawable/quest_divider"
+                android:showDividers="middle"
+                android:background="@drawable/quest_panel_raised"
+                android:elevation="8dp" />
+        </LinearLayout>
+    </LinearLayout>
+</ScrollView>

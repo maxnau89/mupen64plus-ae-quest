@@ -45,4 +45,9 @@
     <string name="questNetplay_hintEdit">Stick ▲▼: digit   ◀▶: position   A: connect   B: back</string>
     <string name="quest_rail_addRoms">Add ROMs</string>
     <string name="quest_library_count">%1$d of %2$d ROMs</string>
+    <string name="quest_game_title">Game</string>
+    <string name="quest_game_restart">Restart</string>
+    <string name="quest_game_resumeHint">Resume starts from the last automatic save. Restart resets the game.</string>
+    <string name="quest_game_back">Back to library</string>
+    <string name="quest_game_settingsSummary">Overrides just for this ROM</string>
 </resources>

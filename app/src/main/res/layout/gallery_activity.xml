@@ -74,6 +74,8 @@
                 android:paddingLeft="@dimen/quest_slab_inset"
                 android:paddingRight="@dimen/quest_slab_inset" />
 
+            <include layout="@layout/quest_game_detail" />
+
             <ImageView
                 android:id="@+id/gallery_empty_icon"
                 android:layout_width="180dp"
@@ -137,7 +139,18 @@
                                     style="@style/QuestSubtitle" />
                             </LinearLayout>
 
+                            <TextView
+                                android:id="@+id/questBackToLibrary"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:minHeight="@dimen/quest_hit_min"
+                                android:visibility="gone"
+                                android:text="@string/quest_game_back"
+                                android:textSize="@dimen/quest_text_base"
+                                style="@style/QuestButton.Secondary" />
+
                             <FrameLayout
+                                android:id="@+id/questSearchPill"
                                 android:layout_width="@dimen/quest_search_width"
                                 android:layout_height="@dimen/quest_hit_min"
                                 android:paddingStart="12dp"

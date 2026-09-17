@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PreferenceRow: 24dp glyph in a 48dp box, title and summary, 72dp comfort target -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="@dimen/quest_hit_comfort"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="12dp"
+    android:paddingEnd="20dp"
+    android:clickable="true"
+    android:focusable="true"
+    android:background="@drawable/quest_row_background">
+
+    <FrameLayout
+        android:layout_width="48dp"
+        android:layout_height="48dp">
+        <ImageView
+            android:id="@+id/rowIcon"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_gravity="center"
+            android:alpha="0.92"
+            android:importantForAccessibility="no" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="8dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/rowTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            style="@style/QuestRowTitle" />
+
+        <TextView
+            android:id="@+id/rowSummary"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="2dp"
+            style="@style/QuestSubtitle" />
+    </LinearLayout>
+</LinearLayout>

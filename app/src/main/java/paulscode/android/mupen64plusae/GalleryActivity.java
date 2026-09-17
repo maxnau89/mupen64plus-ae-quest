@@ -41,6 +41,7 @@ import android.view.KeyEvent;
 import android.view.MenuItem;
 import android.view.PointerIcon;
 import android.view.View;
+import android.widget.LinearLayout;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.ImageView;
@@ -583,6 +584,10 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
                 {
                     mDrawerLayout.closeDrawer( GravityCompat.START );
                 }
+                else if (isQuestGameDetailShown())
+                {
+                    hideQuestGameDetail();
+                }
                 else if(mSearchView != null && !TextUtils.isEmpty(mSearchQuery)) {
                     mSearchQuery = "";
                     mSearchView.setQuery( mSearchQuery, true );
@@ -945,42 +950,47 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
     @Override
     public void onGameSidebarAction(MenuItem menuItem)
     {
+        handleGameAction(menuItem.getItemId());
+    }
+
+    private void handleGameAction(int itemId)
+    {
         final GalleryItem item = mSelectedItem;
         if( item == null || item.romUri == null)
             return;
 
-        if (menuItem.getItemId() == R.id.menuItem_resume) {
+        if (itemId == R.id.menuItem_resume) {
             launchGameActivity( item.romUri,
                     item.zipUri,
                     item.md5, item.crc, item.headerName,
                     item.countryCode.getValue(), item.artPath, item.goodName, item.displayName, false,
                     false, false);
-        } else if (menuItem.getItemId() == R.id.menuItem_start) {
+        } else if (itemId == R.id.menuItem_start) {
             launchGameActivity(item.romUri,
                     item.zipUri,
                     item.md5, item.crc,
                     item.headerName, item.countryCode.getValue(), item.artPath,
                     item.goodName, item.displayName, true,
                     false, false);
-        } else if (menuItem.getItemId() == R.id.menuItem_connectNetplayServer) {
+        } else if (itemId == R.id.menuItem_connectNetplayServer) {
             launchGameActivity(item.romUri,
                     item.zipUri,
                     item.md5, item.crc,
                     item.headerName, item.countryCode.getValue(), item.artPath,
                     item.goodName, item.displayName, true,
                     true, false);
-        } else if (menuItem.getItemId() == R.id.menuItem_startNetplayServer) {
+        } else if (itemId == R.id.menuItem_startNetplayServer) {
             launchGameActivity(item.romUri,
                     item.zipUri,
                     item.md5, item.crc,
                     item.headerName, item.countryCode.getValue(), item.artPath,
                     item.goodName, item.displayName, true,
                     true, true);
-        } else if (menuItem.getItemId() == R.id.menuItem_settings) {
+        } else if (itemId == R.id.menuItem_settings) {
             tagForRefreshNeeded();
             ActivityHelper.startGamePrefsActivity( GalleryActivity.this, item.romUri,
                     item.md5, item.crc, item.headerName, item.goodName, item.displayName, item.countryCode.getValue());
-        } else if (menuItem.getItemId() == R.id.menuItem_remove) {
+        } else if (itemId == R.id.menuItem_remove) {
             final CharSequence title = getText( R.string.confirm_title );
             final CharSequence message = getText( R.string.confirmRemoveFromLibrary_message );
 
@@ -989,7 +999,7 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
 
             final FragmentManager fm = getSupportFragmentManager();
             confirmationDialog.show(fm, STATE_REMOVE_FROM_LIBRARY_DIALOG);
-        } else if (menuItem.getItemId() == R.id.menuItem_createShortcut) {
+        } else if (itemId == R.id.menuItem_createShortcut) {
             createGameShortcut(item);
         }
     }
@@ -1017,40 +1027,79 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
 
     public void onGalleryItemClick(GalleryItem item)
     {
+        showQuestGameDetail(item);
+    }
+
+    /** Quest: the game opens as a plate inside the library slab instead of swapping the drawer. */
+    private void showQuestGameDetail(GalleryItem item)
+    {
         mSelectedItem = item;
+        mDrawerLayout.closeDrawer(GravityCompat.START);
 
-        // Show the game info sidebar
-        mDrawerList.setVisibility(View.GONE);
-        mGameSidebar.setVisibility(View.VISIBLE);
-        mGameSidebar.scrollTo(0, 0);
-
-        // Check if valid image
-        if (FileUtil.isFileImage(new File(item.artPath))) {
-            // Set the cover art in the sidebar
+        final ImageView art = findViewById(R.id.questGameArt);
+        if (item.artPath != null && FileUtil.isFileImage(new File(item.artPath))) {
             item.loadBitmap(this);
-            mGameSidebar.setImage(item.artBitmap);
+            art.setImageDrawable(item.artBitmap);
         } else {
-            mGameSidebar.setImage(null);
+            art.setImageResource(R.drawable.default_coverart);
         }
+        ((TextView) findViewById(R.id.questGameName)).setText(item.displayName);
+        ((TextView) findViewById(R.id.questGameMeta)).setText(
+                (item.headerName != null ? item.headerName.trim() : "") + " \u00B7 " + item.countryCode.toString());
 
-        // Set the game title
-        mGameSidebar.setTitle(item.displayName);
+        findViewById(R.id.questGameResume).setOnClickListener(v -> handleGameAction(R.id.menuItem_resume));
+        findViewById(R.id.questGameRestart).setOnClickListener(v -> handleGameAction(R.id.menuItem_start));
 
+        final LinearLayout actions = findViewById(R.id.questGameActions);
+        actions.removeAllViews();
+        addQuestActionRow(actions, R.drawable.ic_sliders, getString(R.string.menuItem_settings),
+                getString(R.string.quest_game_settingsSummary), R.id.menuItem_settings);
+        addQuestActionRow(actions, R.drawable.ic_users, getString(R.string.actionStartNetplay_title),
+                getString(R.string.actionStartNetplay_summary), R.id.menuItem_startNetplayServer);
+        addQuestActionRow(actions, R.drawable.ic_users, getString(R.string.actionConnectNetplay_title),
+                getString(R.string.actionConnectNetplay_summary), R.id.menuItem_connectNetplayServer);
+        addQuestActionRow(actions, R.drawable.ic_undo, getString(R.string.actionRemove_title),
+                getString(R.string.actionRemove_summary), R.id.menuItem_remove);
 
-        // Restore the menu
-        mGameSidebar.setActionHandler(GalleryActivity.this, R.menu.gallery_game_drawer);
+        ((TextView) findViewById(R.id.questTitle)).setText(R.string.quest_game_title);
+        ((TextView) findViewById(R.id.questSubtitle)).setText(item.displayName);
+        findViewById(R.id.questSearchPill).setVisibility(View.GONE);
+        final View back = findViewById(R.id.questBackToLibrary);
+        back.setVisibility(View.VISIBLE);
+        back.setOnClickListener(v -> hideQuestGameDetail());
+        findViewById(R.id.gallery_empty_icon).setVisibility(View.INVISIBLE);
+        mGridView.setVisibility(View.INVISIBLE);
+        findViewById(R.id.questGameDetail).setVisibility(View.VISIBLE);
+        findViewById(R.id.questGameResume).requestFocus();
+    }
 
-        if (mAppData.isAndroidTv)
-        {
-            mGameSidebar.getMenu().removeItem(R.id.menuItem_createShortcut);
-            mGameSidebar.reload();
+    private boolean isQuestGameDetailShown()
+    {
+        final View detail = findViewById(R.id.questGameDetail);
+        return detail != null && detail.getVisibility() == View.VISIBLE;
+    }
+
+    private void hideQuestGameDetail()
+    {
+        mSelectedItem = null;
+        findViewById(R.id.questGameDetail).setVisibility(View.GONE);
+        mGridView.setVisibility(View.VISIBLE);
+        ((TextView) findViewById(R.id.questTitle)).setText(R.string.galleryLibrary);
+        findViewById(R.id.questBackToLibrary).setVisibility(View.GONE);
+        findViewById(R.id.questSearchPill).setVisibility(View.VISIBLE);
+        if (mGridView.getAdapter() != null) {
+            refreshGrid(mItemsCache, mRecentItemsCache);
         }
+    }
 
-        // Open the navigation drawer
-        mDrawerLayout.openDrawer(GravityCompat.START);
-
-        mGameSidebar.requestFocus();
-        mGameSidebar.setSelection(0);
+    private void addQuestActionRow(LinearLayout parent, int icon, String title, String summary, int actionId)
+    {
+        final View row = getLayoutInflater().inflate(R.layout.quest_action_row, parent, false);
+        ((ImageView) row.findViewById(R.id.rowIcon)).setImageResource(icon);
+        ((TextView) row.findViewById(R.id.rowTitle)).setText(title);
+        ((TextView) row.findViewById(R.id.rowSummary)).setText(summary);
+        row.setOnClickListener(v -> handleGameAction(actionId));
+        parent.addView(row);
     }
 
     public boolean onGalleryItemLongClick( GalleryItem item )
@@ -1197,7 +1246,9 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
             mGridView.getAdapter().notifyDataSetChanged();
         }
 
-        updateQuestLibraryCount(galleryItems);
+        if (!isQuestGameDetailShown()) {
+            updateQuestLibraryCount(galleryItems);
+        }
 
         if(galleryItems.size() > 0) {
             findViewById(R.id.gallery_empty_icon).setVisibility(View.INVISIBLE);
@@ -1283,6 +1334,9 @@ public class GalleryActivity extends AppCompatActivity implements GameSidebarAct
     {
         setupQuestRailItem(R.id.railLibrary, R.drawable.ic_controller, R.string.galleryLibrary, v -> {
             mDrawerLayout.closeDrawer(GravityCompat.START);
+            if (isQuestGameDetailShown()) {
+                hideQuestGameDetail();
+            }
             if (mGridView.getLayoutManager() != null) {
                 mGridView.getLayoutManager().scrollToPosition(0);
             }

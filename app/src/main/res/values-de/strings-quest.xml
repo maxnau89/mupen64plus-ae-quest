@@ -44,4 +44,9 @@
     <string name="questNetplay_hintEdit">Stick ▲▼: Ziffer   ◀▶: Stelle   A: verbinden   B: zurück</string>
     <string name="quest_rail_addRoms">ROMs hinzufügen</string>
     <string name="quest_library_count">%1$d von %2$d ROMs</string>
+    <string name="quest_game_title">Spiel</string>
+    <string name="quest_game_restart">Neu starten</string>
+    <string name="quest_game_resumeHint">Fortsetzen startet beim letzten automatischen Spielstand. Neu starten setzt das Spiel zurück.</string>
+    <string name="quest_game_back">Zurück zur Bibliothek</string>
+    <string name="quest_game_settingsSummary">Einstellungen nur für diese ROM</string>
 </resources>
