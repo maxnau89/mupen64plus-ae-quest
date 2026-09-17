@@ -72,17 +72,39 @@ The library and every settings screen, captured from the panel (cover art blurre
 ## Install
 
 Download the APK from [Releases](https://github.com/maxnau89/mupen64plus-ae-quest/releases) and
-sideload it onto the headset:
+sideload it. Either way you first need
+[developer mode](https://developers.meta.com/horizon/documentation/native/android/mobile-device-setup/)
+on the headset, which needs a free Meta developer account.
+
+It installs beside the original app, so an existing M64Plus FZ stays untouched. Afterwards the app
+is in your library under **Apps → Unknown Sources**.
+
+### With SideQuest
+
+No terminal needed. [SideQuest](https://sidequestvr.com/setup-howto) is the usual sideloading tool
+for the Quest; the app is not in its store, you install the downloaded APK through it.
+
+1. Install the SideQuest desktop app and connect the headset to your computer by USB.
+2. Put the headset on and confirm the **Allow USB debugging** prompt. Tick *Always allow from this
+   computer* so it stops asking.
+3. The dot in the top left of SideQuest turns green once the headset is connected.
+4. Click the **Install APK file from folder on computer** button in the top right — the box with the
+   arrow pointing into it — and pick the downloaded APK. Dragging the file onto the SideQuest
+   window does the same.
+5. Wait for the *Install complete* message.
+
+### With adb
+
+If you already have the Android platform tools:
 
 ```bash
-adb install -r M64PlusQuest.apk
+adb install -r M64PlusQuest-1.0.apk
 ```
 
-It installs beside the original app, so an existing M64Plus FZ stays untouched.
-You need [developer mode](https://developers.meta.com/horizon/documentation/native/android/mobile-device-setup/)
-on the headset. Afterwards the app is under **Apps → Unknown Sources**.
+### ROMs
 
-Bring your own ROMs. Copy them to the headset, open **Add ROMs** and point it at the folder.
+Bring your own. Copy them to the headset — over USB, with SideQuest's file manager, or by cable
+from a phone — then open **Add ROMs** in the app and point it at the folder.
 
 ## Using it
 
