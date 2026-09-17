@@ -1,6 +1,6 @@
 # M64Plus Quest
 
-**Nintendo 64 on the Meta Quest, in VR, with the Touch controllers.**
+**N64 on the Meta Quest, in VR, with the Touch controllers.**
 
 M64Plus Quest is a fork of [Mupen64Plus-AE](https://github.com/mupen64plus-ae/mupen64plus-ae)
 that turns the emulator into a native OpenXR application. The game is not a flat window floating in
@@ -40,6 +40,8 @@ The position is remembered per mode, so passthrough and full VR each keep their 
 its buttons glowing as you press them — the Z trigger shines through the shell. It can also be
 shown as a flat overlay under the screen, or turned off.
 
+![The 3D controller held up in front of the game](docs/screenshots/vr/controller-in-hands.jpg)
+
 **A dock under the screen and a menu beside it.** Point at them with a controller, the trigger
 clicks. Save, load, screenshot, menu and exit are always one click away, and opening the menu no
 longer covers the game.
@@ -60,7 +62,7 @@ The in-game menu opens beside the picture instead of on top of it, and a control
 
 ![The in-game menu beside the picture](docs/screenshots/vr/game-menu.jpg)
 
-The library and every settings screen, captured from the panel:
+The library and every settings screen, captured from the panel (cover art blurred):
 
 | | |
 |---|---|
