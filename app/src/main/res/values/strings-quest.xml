@@ -109,9 +109,9 @@
     <string name="stereo3dMode_entryLeft">Left eye</string>
     <string name="stereo3dMode_entryRight">Right eye</string>
     <string name="stereo3dSeparation_title">Eye separation</string>
-    <string name="stereo3dSeparation_summary">How far the eye moves aside. Thousandths of a clip unit.</string>
+    <string name="stereo3dSeparation_summary">How far the eye moves aside. 30 matches a 2 m screen at 2 m distance.</string>
     <string name="stereo3dConvergence_title">Convergence depth</string>
-    <string name="stereo3dConvergence_summary">Depth that stays put, in the game’s own units. Nearer geometry comes towards you, farther geometry recedes. Differs wildly per game.</string>
+    <string name="stereo3dConvergence_summary">Depth that stays on the screen plane, in the game’s own units. 0 measures it from the scene automatically.</string>
     <string name="stereo3dFov_title">3D field of view</string>
     <string name="stereo3dFov_summary">Widens the game camera without stretching the picture. High values can reveal missing geometry at the edges.</string>
     <string name="stereo3dMode_entryBoth">Both eyes (double pass)</string>

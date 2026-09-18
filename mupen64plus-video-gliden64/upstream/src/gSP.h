@@ -201,6 +201,9 @@ void gSPSetDMATexOffset(u32 _addr);
 void gSPSetVertexColorBase( u32 base );
 void gSPCombineMatrices(u32 _mode);
 
+/** Start of a frame's display list walks: finishes the automatic convergence measurement. */
+void gSPStereoBeginFrame();
+
 /** Eye the current display list walk renders, one of Config::StereoMode. */
 void gSPSetStereoEye(u32 _eye);
 

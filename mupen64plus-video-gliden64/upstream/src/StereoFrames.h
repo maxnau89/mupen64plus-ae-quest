@@ -21,11 +21,9 @@ public:
 	/** Keeps a copy of the buffer the first walk drew. */
 	void captureLeftEye(FrameBuffer * _pBuffer);
 
-	/** The kept copy belonging to this N64 frame buffer, or null if it was not captured. */
+	/** The kept copy belonging to this N64 frame buffer, or null if it was never captured. */
 	FrameBuffer * leftEye(const FrameBuffer * _pBuffer) const;
 
-	/** Forgets the copy, e.g. when stereo is switched off. */
-	void reset();
 
 	void destroy();
 
@@ -39,7 +37,10 @@ private:
 	// global copy made the last image captured for the left eye get paired with an unrelated main
 	// image at VI time.
 	std::map<u32, std::unique_ptr<FrameBuffer>> m_leftEyes;
-	std::set<u32> m_capturedThisFrame;
+	// Addresses whose copy is valid. A copy stays until its buffer is drawn again: with double
+	// buffering the image on screen is the one the previous display list drew, and games running at
+	// 30 fps show every image twice, so dropping copies once shown left every frame without a pair.
+	std::set<u32> m_captured;
 };
 
 #endif // STEREO_FRAMES_H

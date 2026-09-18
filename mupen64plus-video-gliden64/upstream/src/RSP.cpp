@@ -207,6 +207,8 @@ void RSP_ProcessDList()
 	bool haveFirstPassDmem = false;
 	if (passes == 2)
 		memcpy(initialDmem, DMEM, sizeof(initialDmem));
+	if (config.stereo.mode != Config::stereoOff)
+		gSPStereoBeginFrame();
 	for (u32 pass = 0; pass < passes; ++pass) {
 		if (pass == 1)
 			memcpy(DMEM, initialDmem, sizeof(initialDmem));

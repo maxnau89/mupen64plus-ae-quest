@@ -601,8 +601,8 @@ public class GamePrefs
         enable64DdSupport = mPreferences.getBoolean( SUPPORT_64DD, false );
 
         stereo3dMode = getSafeInt( mPreferences, STEREO_3D_MODE, 0 );
-        stereo3dSeparation = mPreferences.getInt( STEREO_3D_SEPARATION, 8 );
-        stereo3dConvergence = mPreferences.getInt( STEREO_3D_CONVERGENCE, 500 );
+        stereo3dSeparation = mPreferences.getInt( STEREO_3D_SEPARATION, 30 );
+        stereo3dConvergence = mPreferences.getInt( STEREO_3D_CONVERGENCE, 0 );
         stereo3dFov = mPreferences.getInt( STEREO_3D_FOV, 110 );
 
         if (enable64DdSupport) {

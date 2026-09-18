@@ -112,7 +112,7 @@
             android:title="@string/stereo3dMode_title" />
 
         <paulscode.android.mupen64plusae.preference.SeekBarPreference
-            android:defaultValue="8"
+            android:defaultValue="30"
             android:key="stereo3dSeparation"
             android:summary="@string/stereo3dSeparation_summary"
             android:title="@string/stereo3dSeparation_title"
@@ -122,7 +122,7 @@
             mupen64:units="" />
 
         <paulscode.android.mupen64plusae.preference.SeekBarPreference
-            android:defaultValue="500"
+            android:defaultValue="0"
             android:key="stereo3dConvergence"
             android:summary="@string/stereo3dConvergence_summary"
             android:title="@string/stereo3dConvergence_title"

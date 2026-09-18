@@ -138,8 +138,8 @@ void Config::resetToDefaults()
 	gammaCorrection.level = 2.0f;
 
 	stereo.mode = stereoOff;
-	stereo.separation = 0.008f;
-	stereo.convergence = 500.0f;
+	stereo.separation = 0.03f;
+	stereo.convergence = 0.0f;
 	stereo.fovScale = 1.0f;
 
 	onScreenDisplay.vis = 0;

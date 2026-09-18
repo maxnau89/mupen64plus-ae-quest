@@ -1639,6 +1639,15 @@ void FrameBufferList::renderBuffer()
 		const s32 halfWidth = (_params.dstX1 - _params.dstX0) / 2;
 		GraphicsDrawer::BlitOrCopyRectParams leftParams = _params;
 		FrameBuffer * pLeftEye = StereoFrames::get().leftEye(_pSourceBuffer);
+		{
+			// Diagnostic: how often a shown image has no pair and falls back to mono
+			static u32 shown = 0, missing = 0;
+			++shown;
+			if (pLeftEye == nullptr)
+				++missing;
+			if (shown % 600 == 0)
+				LOG(LOG_MINIMAL, "Stereo pairs: shown=%u missing=%u", shown, missing);
+		}
 		if (pLeftEye != nullptr) {
 			leftParams.tex[0] = pLeftEye->m_pTexture;
 			leftParams.srcWidth = pLeftEye->m_pTexture->width;
@@ -1687,7 +1696,6 @@ void FrameBufferList::renderBuffer()
 
 		drawStereoBuffer(blitParams, pNextBuffer);
 	}
-	StereoFrames::get().reset();
 
 	gfxContext.bindFramebuffer(bufferTarget::READ_FRAMEBUFFER, ObjectHandle::defaultFramebuffer);
 	m_overscan.draw(vFullHeight, rdpRes.vi_ispal);

@@ -4,6 +4,7 @@
 #include "StereoFrames.h"
 #include "FrameBuffer.h"
 #include "Config.h"
+#include "Log.h"
 
 #include <Graphics/Context.h>
 #include <Graphics/Parameters.h>
@@ -100,29 +101,28 @@ void StereoFrames::captureLeftEye(FrameBuffer * _pBuffer)
 	params.mask = blitMask::COLOR_BUFFER;
 	params.filter = textureParameters::FILTER_NEAREST;
 
-	if (gfxContext.blitFramebuffers(params))
-		m_capturedThisFrame.insert(_pBuffer->m_startAddress);
-	else
-		m_capturedThisFrame.erase(_pBuffer->m_startAddress);
+	if (gfxContext.blitFramebuffers(params)) {
+		m_captured.insert(_pBuffer->m_startAddress);
+	} else {
+		m_captured.erase(_pBuffer->m_startAddress);
+		static u32 failures = 0;
+		if (failures++ < 5)
+			LOG(LOG_MINIMAL, "Stereo diagnostic: left eye blit failed %ux%u", pSource->width, pSource->height);
+	}
 
 	gfxContext.bindFramebuffer(bufferTarget::DRAW_FRAMEBUFFER, ObjectHandle::defaultFramebuffer);
 }
 
 FrameBuffer * StereoFrames::leftEye(const FrameBuffer * _pBuffer) const
 {
-	if (_pBuffer == nullptr || m_capturedThisFrame.count(_pBuffer->m_startAddress) == 0)
+	if (_pBuffer == nullptr || m_captured.count(_pBuffer->m_startAddress) == 0)
 		return nullptr;
 	const auto iter = m_leftEyes.find(_pBuffer->m_startAddress);
 	return iter != m_leftEyes.end() ? iter->second.get() : nullptr;
 }
 
-void StereoFrames::reset()
-{
-	m_capturedThisFrame.clear();
-}
-
 void StereoFrames::destroy()
 {
-	m_capturedThisFrame.clear();
+	m_captured.clear();
 	m_leftEyes.clear();
 }

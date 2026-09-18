@@ -55,8 +55,51 @@ void gSPFlushTriangles()
 // Vertices are transformed as a row vector, so x reads column 0 and w reads column 3.
 static u32 l_stereoEye = Config::stereoOff;
 
+// Whether perspective geometry has been drawn in the current walk. Orthographic geometry drawn
+// before it is a background such as Super Mario 64's skybox and belongs at infinity; drawn after it,
+// it is an overlay such as menu text and belongs on the screen plane, like texrects.
+static bool l_stereoPerspectiveSeen = false;
+
+// An orthographic combined matrix gives every vertex the same w. Row vectors: w reads column 3.
+static
+bool _isOrthographic(const f32 matrix[4][4])
+{
+	return fabsf(matrix[0][3]) < 1e-6f && fabsf(matrix[1][3]) < 1e-6f && fabsf(matrix[2][3]) < 1e-6f;
+}
+
+// Automatic convergence: the geometric mean of w over the perspective vertices of one walk, smoothed
+// across frames. The scale of w is whatever each game chose for its world, so a fixed value that
+// gives depth in one game flattens another. 0 until something has been measured.
+static f32 l_autoConvergence = 0.0f;
+static f64 l_logWSum = 0.0;
+static u32 l_logWCount = 0;
+
+void gSPStereoBeginFrame()
+{
+	if (l_logWCount >= 32) {
+		const f32 measured = static_cast<f32>(exp(l_logWSum / l_logWCount));
+		l_autoConvergence = l_autoConvergence > 0.0f
+			? l_autoConvergence + (measured - l_autoConvergence) * 0.1f
+			: measured;
+		static u32 frames = 0;
+		if (frames++ % 600 == 0)
+			LOG(LOG_MINIMAL, "Stereo convergence: auto=%.2f measured=%.2f vertices=%u",
+				l_autoConvergence, measured, l_logWCount);
+	}
+	l_logWSum = 0.0;
+	l_logWCount = 0;
+}
+
+// A value set for the ROM wins, 0 there means automatic
+static
+f32 _stereoConvergence()
+{
+	return config.stereo.convergence > 0.0f ? config.stereo.convergence : l_autoConvergence;
+}
+
 void gSPSetStereoEye(u32 _eye)
 {
+	l_stereoPerspectiveSeen = false;
 	if (l_stereoEye == _eye)
 		return;
 	l_stereoEye = _eye;
@@ -69,11 +112,14 @@ void gSPApplyStereo(f32 matrix[4][4])
 		return;
 
 	// Scaling clip-space x/y by the reciprocal widens the original game's projection while
-	// leaving screen-space rectangles (HUD and most overlays) at their intended size.
-	const f32 projectionScale = 1.0f / config.stereo.fovScale;
-	for (int i = 0; i < 4; ++i) {
-		matrix[i][0] *= projectionScale;
-		matrix[i][1] *= projectionScale;
+	// leaving screen-space rectangles (HUD and most overlays) at their intended size. Orthographic
+	// geometry is a background or an overlay laid out for the original frame, so it keeps its size.
+	if (!_isOrthographic(matrix)) {
+		const f32 projectionScale = 1.0f / config.stereo.fovScale;
+		for (int i = 0; i < 4; ++i) {
+			matrix[i][0] *= projectionScale;
+			matrix[i][1] *= projectionScale;
+		}
 	}
 
 	const f32 separation = l_stereoEye == Config::stereoLeftEye
@@ -802,23 +848,39 @@ void gSPApplyStereoConvergence(u32 v, SPVertex * spVtx)
 
 	const f32 separation = l_stereoEye == Config::stereoLeftEye
 		? -config.stereo.separation : config.stereo.separation;
+	const bool orthographic = _isOrthographic(gSP.matrix.combined);
+	if (!orthographic)
+		l_stereoPerspectiveSeen = true;
+	const f32 convergence = _stereoConvergence();
+	// Measure once per frame: the first walk, whichever eye it renders
+	const bool measure = !orthographic &&
+		(config.stereo.mode != Config::stereoBothEyes || l_stereoEye == Config::stereoLeftEye);
 	for (u32 j = 0; j < VNUM; ++j) {
 		SPVertex & vtx = spVtx[v+j];
-		// gSPApplyStereo() already contributed separation*w. Replace that contribution with
-		// separation*(w-convergence), capped to the magnitude of the parallax at infinity. The cap
-		// keeps microcodes with w near one (notably Factor 5) from throwing nearby geometry entirely
-		// outside the clip volume when their convergence scale differs from other games.
+		// gSPApplyStereo() already contributed separation*w, which is the parallax at infinity.
 		const f32 matrixShift = separation * vtx.w;
-		const f32 requestedShift = separation * (vtx.w - config.stereo.convergence);
+		if (orthographic) {
+			// A flat projection carries no depth. Backgrounds keep the parallax at infinity, overlays
+			// drawn after the scene go on the screen plane. Convergence would put a skybox in front
+			// of the screen while everything else hides it, which looks restless.
+			if (l_stereoPerspectiveSeen)
+				vtx.x -= matrixShift;
+			continue;
+		}
+		// Replace that contribution with separation*(w-convergence), capped to the magnitude of the
+		// parallax at infinity. The cap keeps microcodes with w near one (notably Factor 5) from
+		// throwing nearby geometry entirely outside the clip volume when their convergence scale
+		// differs from other games.
+		if (measure && vtx.w > 0.0f) {
+			l_logWSum += log(vtx.w);
+			++l_logWCount;
+		}
+		// Nothing measured yet: keep the parallax at infinity the matrix gave
+		if (convergence <= 0.0f)
+			continue;
+		const f32 requestedShift = separation * (vtx.w - convergence);
 		const f32 limit = fabsf(separation * vtx.w);
 		const f32 safeShift = max(-limit, min(requestedShift, limit));
-		static u32 loggedVertices[4] = { 0, 0, 0, 0 };
-		if (loggedVertices[l_stereoEye] < 4) {
-			LOG(LOG_MINIMAL, "Stereo vertex: eye=%u xBefore=%.4f w=%.4f matrixShift=%.4f requested=%.4f safe=%.4f xAfter=%.4f",
-				l_stereoEye, vtx.x, vtx.w, matrixShift, requestedShift, safeShift,
-				vtx.x + safeShift - matrixShift);
-			++loggedVertices[l_stereoEye];
-		}
 		vtx.x += safeShift - matrixShift;
 	}
 }

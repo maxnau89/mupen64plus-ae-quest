@@ -106,9 +106,9 @@
     <string name="stereo3dMode_entryLeft">Linkes Auge</string>
     <string name="stereo3dMode_entryRight">Rechtes Auge</string>
     <string name="stereo3dSeparation_title">Augenabstand</string>
-    <string name="stereo3dSeparation_summary">Wie weit das Auge zur Seite rückt. In Tausendsteln einer Clip-Einheit.</string>
+    <string name="stereo3dSeparation_summary">Wie weit das Auge zur Seite rückt. 30 passt zu einer 2 m breiten Leinwand in 2 m Abstand.</string>
     <string name="stereo3dConvergence_title">Konvergenztiefe</string>
-    <string name="stereo3dConvergence_summary">Tiefe, die stehen bleibt, in den Einheiten des Spiels. Näheres kommt auf dich zu, Entfernteres weicht zurück. Von Spiel zu Spiel sehr verschieden.</string>
+    <string name="stereo3dConvergence_summary">Tiefe, die auf der Bildschirmebene bleibt, in den Einheiten des Spiels. 0 misst sie automatisch aus der Szene.</string>
     <string name="stereo3dFov_title">3D-Sichtfeld</string>
     <string name="stereo3dFov_summary">Erweitert die Spielkamera, ohne das Bild zu strecken. Hohe Werte können an den Rändern fehlende Geometrie sichtbar machen.</string>
     <string name="stereo3dMode_entryBoth">Beide Augen (zwei Durchläufe)</string>
