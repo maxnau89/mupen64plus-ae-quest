@@ -1626,27 +1626,34 @@ void FrameBufferList::renderBuffer()
 	blitParams.readBuffer = readBuffer;
 	blitParams.invertY = config.frameBufferEmulation.enableOverscan == 0;
 
-	// Experimental stereoscopic 3D: the two walks of the display list go out side by side, the left
-	// eye in the left half and the right eye, which is what is still in the buffer, in the right.
-	FrameBuffer * pLeftEye = config.stereo.mode == Config::stereoBothEyes
-		? StereoFrames::get().leftEye() : nullptr;
-	if (pLeftEye != nullptr) {
-		const s32 halfWidth = (blitParams.dstX1 - blitParams.dstX0) / 2;
-		const s32 dstX0 = blitParams.dstX0;
+	// Experimental stereoscopic 3D: pair each displayed N64 color image with the copy captured for
+	// that same image. If capture failed, duplicate the right eye instead of feeding the two XR eyes
+	// unrelated left and right halves of one mono image.
+	auto drawStereoBuffer = [&drawer](const GraphicsDrawer::BlitOrCopyRectParams & _params,
+		const FrameBuffer * _pSourceBuffer) {
+		if (config.stereo.mode != Config::stereoBothEyes) {
+			drawer.copyTexturedRect(_params);
+			return;
+		}
 
-		GraphicsDrawer::BlitOrCopyRectParams leftParams = blitParams;
-		leftParams.tex[0] = pLeftEye->m_pTexture;
-		leftParams.srcWidth = pLeftEye->m_pTexture->width;
-		leftParams.srcHeight = pLeftEye->m_pTexture->height;
-		leftParams.readBuffer = pLeftEye->m_FBO;
-		leftParams.dstX1 = dstX0 + halfWidth;
+		const s32 halfWidth = (_params.dstX1 - _params.dstX0) / 2;
+		GraphicsDrawer::BlitOrCopyRectParams leftParams = _params;
+		FrameBuffer * pLeftEye = StereoFrames::get().leftEye(_pSourceBuffer);
+		if (pLeftEye != nullptr) {
+			leftParams.tex[0] = pLeftEye->m_pTexture;
+			leftParams.srcWidth = pLeftEye->m_pTexture->width;
+			leftParams.srcHeight = pLeftEye->m_pTexture->height;
+			leftParams.readBuffer = pLeftEye->m_FBO;
+		}
+		leftParams.dstX1 = _params.dstX0 + halfWidth;
 		drawer.copyTexturedRect(leftParams);
 
-		blitParams.dstX0 = dstX0 + halfWidth;
-		StereoFrames::get().reset();
-	}
+		GraphicsDrawer::BlitOrCopyRectParams rightParams = _params;
+		rightParams.dstX0 = _params.dstX0 + halfWidth;
+		drawer.copyTexturedRect(rightParams);
+	};
 
-	drawer.copyTexturedRect(blitParams);
+	drawStereoBuffer(blitParams, pBuffer);
 
 	if (pNextBuffer != nullptr) {
 		pNextBuffer->m_isMainBuffer = true;
@@ -1678,8 +1685,9 @@ void FrameBufferList::renderBuffer()
 		blitParams.mask = blitMask::COLOR_BUFFER;
 		blitParams.readBuffer = readBuffer;
 
-		drawer.copyTexturedRect(blitParams);
+		drawStereoBuffer(blitParams, pNextBuffer);
 	}
+	StereoFrames::get().reset();
 
 	gfxContext.bindFramebuffer(bufferTarget::READ_FRAMEBUFFER, ObjectHandle::defaultFramebuffer);
 	m_overscan.draw(vFullHeight, rdpRes.vi_ispal);

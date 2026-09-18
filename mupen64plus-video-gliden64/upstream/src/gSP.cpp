@@ -50,8 +50,8 @@ void gSPFlushTriangles()
 	}
 }
 
-// Experimental stereoscopic 3D. Shifts clip space x by separation * (w - convergence), which is the
-// eye offset plus the matching frustum shear, so geometry at the convergence depth does not move.
+// Experimental stereoscopic 3D. The matrix supplies the eye-dependent separation * w term. The
+// convergence term is applied after the transform, where it can be limited safely in screen space.
 // Vertices are transformed as a row vector, so x reads column 0 and w reads column 3.
 static u32 l_stereoEye = Config::stereoOff;
 
@@ -72,7 +72,6 @@ void gSPApplyStereo(f32 matrix[4][4])
 		? -config.stereo.separation : config.stereo.separation;
 	for (int i = 0; i < 4; ++i)
 		matrix[i][0] += separation * matrix[i][3];
-	matrix[3][0] -= separation * config.stereo.convergence;
 }
 
 static
@@ -788,6 +787,28 @@ void gSPBillboardVertex(u32 v, SPVertex * spVtx)
 }
 
 template <u32 VNUM>
+void gSPApplyStereoConvergence(u32 v, SPVertex * spVtx)
+{
+	if (l_stereoEye != Config::stereoLeftEye && l_stereoEye != Config::stereoRightEye)
+		return;
+
+	const f32 separation = l_stereoEye == Config::stereoLeftEye
+		? -config.stereo.separation : config.stereo.separation;
+	for (u32 j = 0; j < VNUM; ++j) {
+		SPVertex & vtx = spVtx[v+j];
+		// gSPApplyStereo() already contributed separation*w. Replace that contribution with
+		// separation*(w-convergence), capped to the magnitude of the parallax at infinity. The cap
+		// keeps microcodes with w near one (notably Factor 5) from throwing nearby geometry entirely
+		// outside the clip volume when their convergence scale differs from other games.
+		const f32 matrixShift = separation * vtx.w;
+		const f32 requestedShift = separation * (vtx.w - config.stereo.convergence);
+		const f32 limit = fabsf(separation * vtx.w);
+		const f32 safeShift = max(-limit, min(requestedShift, limit));
+		vtx.x += safeShift - matrixShift;
+	}
+}
+
+template <u32 VNUM>
 void gSPClipVertex(u32 v, SPVertex * spVtx)
 {
 	const f32 scale = dwnd().getAdjustScale();
@@ -849,6 +870,7 @@ void gSPProcessVertex(u32 v, SPVertex * spVtx)
 	if (gSP.matrix.billboard)
 		gSPBillboardVertex<VNUM>(v, spVtx);
 
+	gSPApplyStereoConvergence<VNUM>(v, spVtx);
 	gSPClipVertex<VNUM>(v, spVtx);
 
 	if (gSP.geometryMode & G_LIGHTING) {

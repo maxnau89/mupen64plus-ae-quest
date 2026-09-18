@@ -138,7 +138,7 @@ void Config::resetToDefaults()
 	gammaCorrection.level = 2.0f;
 
 	stereo.mode = stereoOff;
-	stereo.separation = 0.03f;
+	stereo.separation = 0.008f;
 	stereo.convergence = 500.0f;
 
 	onScreenDisplay.vis = 0;
@@ -215,6 +215,7 @@ const char* Config::hotkeyIniName(u32 _idx)
 	return nullptr;
 }
 
+
 const char* Config::enabledHotkeyIniName(u32 _idx)
 {
 	switch (_idx)
@@ -252,4 +253,3 @@ const char* Config::enabledHotkeyIniName(u32 _idx)
 	}
 	return nullptr;
 }
-

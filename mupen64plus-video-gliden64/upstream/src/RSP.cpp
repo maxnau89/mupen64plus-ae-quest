@@ -191,19 +191,33 @@ void RSP_ProcessDList()
 	}
 
 	// Experimental stereoscopic 3D walks the list once per eye. The list lives in RDRAM and the CPU
-	// does not run in between, so the second walk reads the same commands.
+	// does not run in between. Microcodes do use DMEM as scratch memory, however, so replay from the
+	// original task input and leave behind the result produced by the first (real) walk.
 	const u32 passes = config.stereo.mode == Config::stereoBothEyes ? 2U : 1U;
+	u8 initialDmem[0x1000];
+	u8 firstPassDmem[0x1000];
+	bool haveFirstPassDmem = false;
+	if (passes == 2)
+		memcpy(initialDmem, DMEM, sizeof(initialDmem));
 	for (u32 pass = 0; pass < passes; ++pass) {
+		if (pass == 1)
+			memcpy(DMEM, initialDmem, sizeof(initialDmem));
 		gSPSetStereoEye(passes == 1
 			? config.stereo.mode
 			: (pass == 0 ? Config::stereoLeftEye : Config::stereoRightEye));
 		_runDisplayList();
+		if (passes == 2 && pass == 0) {
+			memcpy(firstPassDmem, DMEM, sizeof(firstPassDmem));
+			haveFirstPassDmem = true;
+		}
 		if (RSP.infloop && REG.SP_STATUS != nullptr)
 			break;
 		// The right eye draws into the same buffer, so put the left one aside first
 		if (passes == 2 && pass == 0)
 			StereoFrames::get().captureLeftEye(frameBufferList().getCurrent());
 	}
+	if (haveFirstPassDmem)
+		memcpy(DMEM, firstPassDmem, sizeof(firstPassDmem));
 	gSPSetStereoEye(config.stereo.mode);
 
 	if (RSP.infloop && REG.SP_STATUS) {
