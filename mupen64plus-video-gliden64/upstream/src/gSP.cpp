@@ -928,7 +928,13 @@ void gSPApplyStereoConvergence(u32 v, SPVertex * spVtx)
 		// Nothing measured yet: keep the parallax at infinity the matrix gave
 		if (convergence <= 0.0f)
 			continue;
-		const f32 requestedShift = separation * (vtx.w - convergence);
+		// Physical parallax in screen space is separation * (1 - convergence/w). A depth boost raises
+		// convergence/w to an exponent below one: far geometry, which physically sits almost at
+		// infinity in racing games, stays apart from the horizon longer, and near geometry comes
+		// forward less.
+		const f32 requestedShift = config.stereo.depthBoost > 0.0f && vtx.w > 0.0f
+			? separation * vtx.w * (1.0f - powf(convergence / vtx.w, 1.0f - 0.7f * config.stereo.depthBoost))
+			: separation * (vtx.w - convergence);
 		const f32 limit = fabsf(separation * vtx.w);
 		const f32 safeShift = max(-limit, min(requestedShift, limit));
 		vtx.x += safeShift - matrixShift;

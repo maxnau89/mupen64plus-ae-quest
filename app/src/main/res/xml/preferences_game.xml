@@ -140,6 +140,16 @@
             mupen64:minimumValue="100"
             mupen64:stepSize="1"
             mupen64:units="%" />
+
+        <paulscode.android.mupen64plusae.preference.SeekBarPreference
+            android:defaultValue="0"
+            android:key="stereo3dDepthBoost"
+            android:summary="@string/stereo3dDepthBoost_summary"
+            android:title="@string/stereo3dDepthBoost_title"
+            mupen64:maximumValue="100"
+            mupen64:minimumValue="0"
+            mupen64:stepSize="5"
+            mupen64:units="%" />
     </androidx.preference.PreferenceScreen>
 
     <androidx.preference.CheckBoxPreference

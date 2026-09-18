@@ -299,6 +299,8 @@ bool Config_SetDefault()
 	assert(res == M64ERR_SUCCESS);
 	res = ConfigSetDefaultFloat(g_configVideoGliden64, "StereoFovScale", config.stereo.fovScale, "Tangent-space field-of-view multiplier for stereoscopic 3D.");
 	assert(res == M64ERR_SUCCESS);
+	res = ConfigSetDefaultFloat(g_configVideoGliden64, "StereoDepthBoost", config.stereo.depthBoost, "Spreads far geometry in depth for stereoscopic 3D, 0..1.");
+	assert(res == M64ERR_SUCCESS);
 
 	//#On screen display settings
 	res = ConfigSetDefaultBool(g_configVideoGliden64, "ShowFPS", config.onScreenDisplay.fps, "Show FPS counter.");
@@ -617,6 +619,8 @@ void Config_LoadConfig()
 	config.stereo.separation = ConfigGetParamFloat(g_configVideoGliden64, "StereoSeparation");
 	config.stereo.convergence = ConfigGetParamFloat(g_configVideoGliden64, "StereoConvergence");
 	config.stereo.fovScale = ConfigGetParamFloat(g_configVideoGliden64, "StereoFovScale");
+	config.stereo.depthBoost = std::max(0.0f, std::min(1.0f,
+		ConfigGetParamFloat(g_configVideoGliden64, "StereoDepthBoost")));
 	if (config.stereo.fovScale < 1.0f)
 		config.stereo.fovScale = 1.0f;
 

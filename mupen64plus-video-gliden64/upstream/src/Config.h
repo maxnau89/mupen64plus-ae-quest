@@ -216,6 +216,7 @@ struct Config
 		f32 separation;   // eye offset in clip units, 0 is mono
 		f32 convergence;  // depth that keeps zero parallax, in the same units as w
 		f32 fovScale;     // tangent-space field-of-view multiplier, 1 is unchanged
+		f32 depthBoost;   // 0 is physical depth, 1 spreads far geometry the most
 	} stereo;
 
 	enum CountersPosition {

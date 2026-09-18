@@ -141,6 +141,7 @@ void Config::resetToDefaults()
 	stereo.separation = 0.03f;
 	stereo.convergence = 0.0f;
 	stereo.fovScale = 1.0f;
+	stereo.depthBoost = 0.0f;
 
 	onScreenDisplay.vis = 0;
 	onScreenDisplay.fps = 0;
