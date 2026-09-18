@@ -327,7 +327,7 @@ public class GamePrefs
     static final String DISPLAY_ZOOM = "displayZoomSeekGame";
     static final String PLAY_SHOW_CHEATS = "playShowCheats";
     static final String SUPPORT_64DD = "support64dd";
-    static final String STEREO_3D_MODE = "stereo3dMode";
+    public static final String STEREO_3D_MODE = "stereo3dMode";
     static final String STEREO_3D_SEPARATION = "stereo3dSeparation";
     static final String STEREO_3D_CONVERGENCE = "stereo3dConvergence";
     static final String STEREO_3D_FOV = "stereo3dFov";
@@ -361,7 +361,7 @@ public class GamePrefs
         gameGoodName = goodName;
         romMd5 = md5;
         gameCrc = crc;
-        mSharedPrefsName = romMd5.replace(' ', '_' ) + "_preferences";
+        mSharedPrefsName = getSharedPrefsName(romMd5);
         mPreferences = context.getSharedPreferences( mSharedPrefsName, Context.MODE_PRIVATE );
 
         // Game-specific data
@@ -840,6 +840,12 @@ public class GamePrefs
         headerName = headerName.replace(":", "");
 
         return headerName;
+    }
+
+    /** Name of the shared preferences holding one game's settings. */
+    public static String getSharedPrefsName( String romMd5 )
+    {
+        return romMd5.replace(' ', '_' ) + "_preferences";
     }
 
     public static String getGameDataPath( String romMd5, String headerName, String countrySymbol)

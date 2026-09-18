@@ -215,7 +215,9 @@ void RSP_ProcessDList()
 		gSPSetStereoEye(passes == 1
 			? config.stereo.mode
 			: (pass == 0 ? Config::stereoLeftEye : Config::stereoRightEye));
+		StereoFrames::get().setCapturing(passes == 2 && pass == 0);
 		_runDisplayList();
+		StereoFrames::get().setCapturing(false);
 		if (passes == 2 && pass == 0) {
 			memcpy(firstPassDmem, DMEM, sizeof(firstPassDmem));
 			haveFirstPassDmem = true;

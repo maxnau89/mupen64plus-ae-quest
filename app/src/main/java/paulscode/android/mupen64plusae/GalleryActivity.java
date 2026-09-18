@@ -24,6 +24,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Build;
@@ -141,6 +142,7 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
 
     // Misc.
     private GalleryItem mSelectedItem = null;
+    private View mQuestStereoRow = null;
 
     private ScanRomsFragment mCacheRomInfoFragment = null;
 
@@ -642,7 +644,7 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         }
     }
 
-    private enum GameAction { RESUME, RESTART, NETPLAY_CONNECT, NETPLAY_SERVER, SETTINGS, REMOVE }
+    private enum GameAction { RESUME, RESTART, STEREO, NETPLAY_CONNECT, NETPLAY_SERVER, SETTINGS, REMOVE }
 
     private void handleGameAction(GameAction action)
     {
@@ -656,6 +658,8 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
                     item.md5, item.crc, item.headerName,
                     item.countryCode.getValue(), item.artPath, item.goodName, item.displayName, false,
                     false, false);
+        } else if (action == GameAction.STEREO) {
+            toggleStereo(item);
         } else if (action == GameAction.RESTART) {
             launchGameActivity(item.romUri,
                     item.zipUri,
@@ -754,6 +758,10 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
 
         final LinearLayout actions = findViewById(R.id.questGameActions);
         actions.removeAllViews();
+        mQuestStereoRow = QuestXr.isQuestDevice()
+                ? addQuestActionRow(actions, R.drawable.ic_stereo_3d, getString(R.string.quest_game_stereo_title),
+                        getStereoSummary(item), GameAction.STEREO)
+                : null;
         addQuestActionRow(actions, R.drawable.ic_sliders, getString(R.string.menuItem_settings),
                 getString(R.string.quest_game_settingsSummary), GameAction.SETTINGS);
         addQuestActionRow(actions, R.drawable.ic_users, getString(R.string.actionStartNetplay_title),
@@ -827,7 +835,7 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         }
     }
 
-    private void addQuestActionRow(LinearLayout parent, int icon, String title, String summary, GameAction action)
+    private View addQuestActionRow(LinearLayout parent, int icon, String title, String summary, GameAction action)
     {
         final View row = getLayoutInflater().inflate(R.layout.quest_action_row, parent, false);
         ((ImageView) row.findViewById(R.id.rowIcon)).setImageResource(icon);
@@ -835,6 +843,39 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         ((TextView) row.findViewById(R.id.rowSummary)).setText(summary);
         row.setOnClickListener(v -> handleGameAction(action));
         parent.addView(row);
+        return row;
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Experimental stereoscopic 3D, switched per game from the game page. The full settings stay in
+    // the game's settings screen; this only flips between off and both eyes.
+
+    private static final String STEREO_OFF = "0";
+    private static final String STEREO_BOTH_EYES = "3";
+
+    private SharedPreferences getGamePreferences(GalleryItem item)
+    {
+        return getSharedPreferences(GamePrefs.getSharedPrefsName(item.md5), MODE_PRIVATE);
+    }
+
+    private String getStereoSummary(GalleryItem item)
+    {
+        final String mode = getGamePreferences(item).getString(GamePrefs.STEREO_3D_MODE, STEREO_OFF);
+        if (STEREO_OFF.equals(mode)) {
+            return getString(R.string.quest_game_stereo_off);
+        }
+        return getString(STEREO_BOTH_EYES.equals(mode)
+                ? R.string.quest_game_stereo_on : R.string.quest_game_stereo_tuning);
+    }
+
+    private void toggleStereo(GalleryItem item)
+    {
+        final SharedPreferences prefs = getGamePreferences(item);
+        final boolean on = !STEREO_OFF.equals(prefs.getString(GamePrefs.STEREO_3D_MODE, STEREO_OFF));
+        prefs.edit().putString(GamePrefs.STEREO_3D_MODE, on ? STEREO_OFF : STEREO_BOTH_EYES).apply();
+        if (mQuestStereoRow != null) {
+            ((TextView) mQuestStereoRow.findViewById(R.id.rowSummary)).setText(getStereoSummary(item));
+        }
     }
 
     public boolean onGalleryItemLongClick( GalleryItem item )

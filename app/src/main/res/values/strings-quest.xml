@@ -115,4 +115,8 @@
     <string name="stereo3dFov_title">3D field of view</string>
     <string name="stereo3dFov_summary">Widens the game camera without stretching the picture. High values can reveal missing geometry at the edges.</string>
     <string name="stereo3dMode_entryBoth">Both eyes (double pass)</string>
+    <string name="quest_game_stereo_title">3D (experimental)</string>
+    <string name="quest_game_stereo_on">On: each eye gets its own view. Starts with the GLideN64 video plug-in.</string>
+    <string name="quest_game_stereo_off">Off. Tap to give this game depth in the headset.</string>
+    <string name="quest_game_stereo_tuning">Tuning a single eye, set in the game’s settings. Tap to switch off.</string>
 </resources>

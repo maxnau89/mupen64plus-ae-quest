@@ -784,6 +784,13 @@ void FrameBufferList::saveBuffer(u32 _address, u16 _format, u16 _size, u16 _widt
 		return;
 	}
 
+	// Experimental stereoscopic 3D: the first walk is leaving this color image, keep its left eye
+	if (m_pCurrent != nullptr && !m_pCurrent->m_isDepthBuffer && StereoFrames::get().isCapturing()) {
+		StereoFrames::get().captureLeftEye(m_pCurrent);
+		// The copy binds the screen; leave the state as the walk had it
+		gfxContext.bindFramebuffer(bufferTarget::DRAW_FRAMEBUFFER, m_pCurrent->m_FBO);
+	}
+
 	if (m_pCurrent != nullptr &&
 		config.frameBufferEmulation.copyAuxToRDRAM != 0 &&
 		(config.generalEmulation.hacks & hack_Snap) == 0) {

@@ -21,6 +21,12 @@ public:
 	/** Keeps a copy of the buffer the first walk drew. */
 	void captureLeftEye(FrameBuffer * _pBuffer);
 
+	/** True during the first walk of a stereo frame. Every color image that walk leaves is kept,
+	 *  not only the last one: games that draw through intermediate buffers end on one of those,
+	 *  and the image that is finally shown would otherwise have no left eye. */
+	void setCapturing(bool _capturing) { m_capturing = _capturing; }
+	bool isCapturing() const { return m_capturing; }
+
 	/** The kept copy belonging to this N64 frame buffer, or null if it was never captured. */
 	FrameBuffer * leftEye(const FrameBuffer * _pBuffer) const;
 
@@ -41,6 +47,7 @@ private:
 	// buffering the image on screen is the one the previous display list drew, and games running at
 	// 30 fps show every image twice, so dropping copies once shown left every frame without a pair.
 	std::set<u32> m_captured;
+	bool m_capturing = false;
 };
 
 #endif // STEREO_FRAMES_H

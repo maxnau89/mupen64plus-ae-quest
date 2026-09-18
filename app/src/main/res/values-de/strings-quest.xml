@@ -112,4 +112,8 @@
     <string name="stereo3dFov_title">3D-Sichtfeld</string>
     <string name="stereo3dFov_summary">Erweitert die Spielkamera, ohne das Bild zu strecken. Hohe Werte können an den Rändern fehlende Geometrie sichtbar machen.</string>
     <string name="stereo3dMode_entryBoth">Beide Augen (zwei Durchläufe)</string>
+    <string name="quest_game_stereo_title">3D (experimentell)</string>
+    <string name="quest_game_stereo_on">An: jedes Auge bekommt ein eigenes Bild. Startet mit dem Video-Plug-in GLideN64.</string>
+    <string name="quest_game_stereo_off">Aus. Antippen, um dem Spiel in der Brille Tiefe zu geben.</string>
+    <string name="quest_game_stereo_tuning">Ein einzelnes Auge zum Einstellen, gesetzt in den Spieleinstellungen. Antippen schaltet aus.</string>
 </resources>
