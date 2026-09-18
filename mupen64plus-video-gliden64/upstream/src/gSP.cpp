@@ -67,26 +67,74 @@ bool _isOrthographic(const f32 matrix[4][4])
 	return fabsf(matrix[0][3]) < 1e-6f && fabsf(matrix[1][3]) < 1e-6f && fabsf(matrix[2][3]) < 1e-6f;
 }
 
-// Automatic convergence: the geometric mean of w over the perspective vertices of one walk, smoothed
-// across frames. The scale of w is whatever each game chose for its world, so a fixed value that
-// gives depth in one game flattens another. 0 until something has been measured.
-static f32 l_autoConvergence = 0.0f;
-static f64 l_logWSum = 0.0;
+// Automatic convergence. The scale of w is whatever each game chose for its world, so a fixed value
+// that gives depth in one game flattens another. Each frame collects a histogram of log2(w) over the
+// perspective vertices of one walk, and convergence goes to the near edge of the scene, its 10th
+// percentile: nearly everything then lies behind the screen plane, like looking through a window,
+// and gets graded depth up to the horizon. A convergence in the middle of the scene put the whole
+// foreground nearer than half of it, where the parallax cap flattened it into one layer.
+static const int kStereoBins = 96;          // log2(w) from -8 to 40 in steps of 0.5
+static u32 l_logWHistogram[kStereoBins] = {};
 static u32 l_logWCount = 0;
+static f32 l_autoLogConvergence = 0.0f;     // log2 of the smoothed convergence
+static bool l_haveAutoConvergence = false;
+static f32 l_autoConvergence = 0.0f;
+
+static
+void _stereoMeasure(f32 w)
+{
+	int bin = static_cast<int>((log2f(w) + 8.0f) * 2.0f);
+	bin = std::max(0, std::min(kStereoBins - 1, bin));
+	++l_logWHistogram[bin];
+	++l_logWCount;
+}
+
+static
+f32 _stereoPercentile(f32 fraction)
+{
+	const u32 target = static_cast<u32>(l_logWCount * fraction);
+	u32 sum = 0;
+	for (int bin = 0; bin < kStereoBins; ++bin) {
+		sum += l_logWHistogram[bin];
+		if (sum > target)
+			return (bin + 0.5f) * 0.5f - 8.0f;
+	}
+	return (kStereoBins - 0.5f) * 0.5f - 8.0f;
+}
+
+// Diagnostic: mean clip-space x/w per eye before the convergence shift, logged now and then
+static f64 l_stereoXSum[4] = {};
+static u32 l_stereoXCount[4] = {};
 
 void gSPStereoBeginFrame()
 {
+	{
+		static u32 frames = 0;
+		if (frames++ % 300 == 0 && l_stereoXCount[Config::stereoLeftEye] > 0)
+			LOG(LOG_MINIMAL, "Stereo eyes: left x/w=%.4f (%u) right x/w=%.4f (%u)",
+				l_stereoXSum[Config::stereoLeftEye] / l_stereoXCount[Config::stereoLeftEye],
+				l_stereoXCount[Config::stereoLeftEye],
+				l_stereoXCount[Config::stereoRightEye] > 0
+					? l_stereoXSum[Config::stereoRightEye] / l_stereoXCount[Config::stereoRightEye] : 0.0,
+				l_stereoXCount[Config::stereoRightEye]);
+		memset(l_stereoXSum, 0, sizeof(l_stereoXSum));
+		memset(l_stereoXCount, 0, sizeof(l_stereoXCount));
+	}
 	if (l_logWCount >= 32) {
-		const f32 measured = static_cast<f32>(exp(l_logWSum / l_logWCount));
-		l_autoConvergence = l_autoConvergence > 0.0f
-			? l_autoConvergence + (measured - l_autoConvergence) * 0.1f
-			: measured;
+		const f32 nearEdge = _stereoPercentile(0.1f);
+		// Smoothed in log space so a sudden near object does not make the depth pump
+		l_autoLogConvergence = l_haveAutoConvergence
+			? l_autoLogConvergence + (nearEdge - l_autoLogConvergence) * 0.1f
+			: nearEdge;
+		l_haveAutoConvergence = true;
+		l_autoConvergence = exp2f(l_autoLogConvergence);
 		static u32 frames = 0;
 		if (frames++ % 600 == 0)
-			LOG(LOG_MINIMAL, "Stereo convergence: auto=%.2f measured=%.2f vertices=%u",
-				l_autoConvergence, measured, l_logWCount);
+			LOG(LOG_MINIMAL, "Stereo convergence: auto=%.1f w p10=%.1f p50=%.1f p90=%.1f vertices=%u",
+				l_autoConvergence, exp2f(nearEdge), exp2f(_stereoPercentile(0.5f)),
+				exp2f(_stereoPercentile(0.9f)), l_logWCount);
 	}
-	l_logWSum = 0.0;
+	memset(l_logWHistogram, 0, sizeof(l_logWHistogram));
 	l_logWCount = 0;
 }
 
@@ -871,9 +919,11 @@ void gSPApplyStereoConvergence(u32 v, SPVertex * spVtx)
 		// parallax at infinity. The cap keeps microcodes with w near one (notably Factor 5) from
 		// throwing nearby geometry entirely outside the clip volume when their convergence scale
 		// differs from other games.
-		if (measure && vtx.w > 0.0f) {
-			l_logWSum += log(vtx.w);
-			++l_logWCount;
+		if (measure && vtx.w > 0.0f)
+			_stereoMeasure(vtx.w);
+		if (vtx.w > 0.0f && l_stereoEye < 4) {
+			l_stereoXSum[l_stereoEye] += (vtx.x + 0.0f) / vtx.w;
+			++l_stereoXCount[l_stereoEye];
 		}
 		// Nothing measured yet: keep the parallax at infinity the matrix gave
 		if (convergence <= 0.0f)

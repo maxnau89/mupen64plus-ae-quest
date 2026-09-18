@@ -785,7 +785,8 @@ void FrameBufferList::saveBuffer(u32 _address, u16 _format, u16 _size, u16 _widt
 	}
 
 	// Experimental stereoscopic 3D: the first walk is leaving this color image, keep its left eye
-	if (m_pCurrent != nullptr && !m_pCurrent->m_isDepthBuffer && StereoFrames::get().isCapturing()) {
+	if (m_pCurrent != nullptr && !m_pCurrent->m_isDepthBuffer && StereoFrames::get().isCapturing() &&
+		StereoFrames::get().wasEntered(m_pCurrent->m_startAddress)) {
 		StereoFrames::get().captureLeftEye(m_pCurrent);
 		// The copy binds the screen; leave the state as the walk had it
 		gfxContext.bindFramebuffer(bufferTarget::DRAW_FRAMEBUFFER, m_pCurrent->m_FBO);
@@ -927,6 +928,7 @@ void FrameBufferList::saveBuffer(u32 _address, u16 _format, u16 _size, u16 _widt
 	}
 
 	m_pCurrent->m_isDepthBuffer = _address == gDP.depthImageAddress;
+	StereoFrames::get().noteEntered(m_pCurrent->m_startAddress);
 	m_pCurrent->m_isPauseScreen = m_pCurrent->m_isOBScreen = false;
 	m_pCurrent->m_copied = false;
 	m_pCurrent->m_swapCount = wnd.getBuffersSwapCount();
@@ -1654,6 +1656,7 @@ void FrameBufferList::renderBuffer()
 				++missing;
 			if (shown % 600 == 0)
 				LOG(LOG_MINIMAL, "Stereo pairs: shown=%u missing=%u", shown, missing);
+
 		}
 		if (pLeftEye != nullptr) {
 			leftParams.tex[0] = pLeftEye->m_pTexture;
@@ -1706,6 +1709,19 @@ void FrameBufferList::renderBuffer()
 
 	gfxContext.bindFramebuffer(bufferTarget::READ_FRAMEBUFFER, ObjectHandle::defaultFramebuffer);
 	m_overscan.draw(vFullHeight, rdpRes.vi_ispal);
+
+	if (config.stereo.mode == Config::stereoBothEyes) {
+		// Diagnostic: do the two halves of what goes on screen still differ?
+		static u32 outputFrames = 0;
+		if (++outputFrames <= 3 || outputFrames % 300 == 0) {
+			gfxContext.bindFramebuffer(bufferTarget::READ_FRAMEBUFFER, ObjectHandle::defaultFramebuffer);
+			const u32 width = wnd.getScreenWidth();
+			LOG(LOG_MINIMAL, "Stereo output: differing=%u of %u filtered=%d next=%d overscan=%d",
+				StereoFrames::countHalfDifferences(width, wnd.getScreenHeight()), width / 2 * 3,
+				pFilteredBuffer != pBuffer ? 1 : 0, pNextBuffer != nullptr ? 1 : 0,
+				config.frameBufferEmulation.enableOverscan);
+		}
+	}
 
 	wnd.swapBuffers();
 	if (m_pCurrent != nullptr) {

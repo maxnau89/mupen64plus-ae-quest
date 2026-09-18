@@ -24,7 +24,19 @@ public:
 	/** True during the first walk of a stereo frame. Every color image that walk leaves is kept,
 	 *  not only the last one: games that draw through intermediate buffers end on one of those,
 	 *  and the image that is finally shown would otherwise have no left eye. */
-	void setCapturing(bool _capturing) { m_capturing = _capturing; }
+	void setCapturing(bool _capturing) { m_capturing = _capturing; m_enteredThisPass.clear(); }
+
+	/** The first walk made this color image current. Only such images are kept when the walk
+	 *  leaves them: when the walk starts, the current image is the one the previous frame's right
+	 *  eye drew, and keeping that as a left eye paired it with itself — games running at 30 fps then
+	 *  showed every image once in stereo and once flat. */
+	void noteEntered(u32 _address) { if (m_capturing) m_enteredThisPass.insert(_address); }
+	bool wasEntered(u32 _address) const { return m_enteredThisPass.count(_address) != 0; }
+
+	/** Diagnostic: color channels in the middle row of the bound read framebuffer that differ
+	 *  between its left and right half. */
+	static u32 countHalfDifferences(u32 _width, u32 _height);
+	u32 captures() const { return m_captures; }
 	bool isCapturing() const { return m_capturing; }
 
 	/** The kept copy belonging to this N64 frame buffer, or null if it was never captured. */
@@ -48,6 +60,8 @@ private:
 	// 30 fps show every image twice, so dropping copies once shown left every frame without a pair.
 	std::set<u32> m_captured;
 	bool m_capturing = false;
+	std::set<u32> m_enteredThisPass;
+	u32 m_captures = 0;
 };
 
 #endif // STEREO_FRAMES_H

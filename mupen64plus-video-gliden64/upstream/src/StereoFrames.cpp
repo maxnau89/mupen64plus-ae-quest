@@ -8,6 +8,9 @@
 
 #include <Graphics/Context.h>
 #include <Graphics/Parameters.h>
+#include <Graphics/OpenGLContext/GLFunctions.h>
+#include <Graphics/OpenGLContext/ThreadedOpenGl/opengl_Wrapper.h>
+#include <vector>
 
 using namespace graphics;
 
@@ -102,6 +105,7 @@ void StereoFrames::captureLeftEye(FrameBuffer * _pBuffer)
 	params.filter = textureParameters::FILTER_NEAREST;
 
 	if (gfxContext.blitFramebuffers(params)) {
+		++m_captures;
 		m_captured.insert(_pBuffer->m_startAddress);
 	} else {
 		m_captured.erase(_pBuffer->m_startAddress);
@@ -111,6 +115,20 @@ void StereoFrames::captureLeftEye(FrameBuffer * _pBuffer)
 	}
 
 	gfxContext.bindFramebuffer(bufferTarget::DRAW_FRAMEBUFFER, ObjectHandle::defaultFramebuffer);
+}
+
+u32 StereoFrames::countHalfDifferences(u32 _width, u32 _height)
+{
+	static std::vector<u8> row;
+	row.resize(_width * 4);
+	glReadPixels(0, _height / 2, _width, 1, GL_RGBA, GL_UNSIGNED_BYTE, row.data());
+	const u32 half = _width / 2;
+	u32 differing = 0;
+	for (u32 x = 0; x < half; ++x)
+		for (u32 c = 0; c < 3; ++c)
+			if (row[x * 4 + c] != row[(x + half) * 4 + c])
+				++differing;
+	return differing;
 }
 
 FrameBuffer * StereoFrames::leftEye(const FrameBuffer * _pBuffer) const
