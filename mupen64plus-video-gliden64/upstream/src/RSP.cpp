@@ -107,16 +107,11 @@ void RSP_CheckDLCounter()
 	}
 }
 
-void RSP_ProcessDList()
+// One walk of the display list, from the state the RSP task left in DMEM. Split out so a stereo
+// frame can walk the same list once per eye.
+static
+void _runDisplayList()
 {
-	RSP.LLE = false;
-
-	if (ConfigOpen || dwnd().isResizeWindow()) {
-		*REG.MI_INTR |= MI_INTR_DP;
-		CheckInterrupts();
-		return;
-	}
-
 	if (RSP.infloop) {
 		RSP.infloop = false;
 		RSP.halt = false;
@@ -182,6 +177,30 @@ void RSP_ProcessDList()
 		_ProcessDList();
 		break;
 	}
+}
+
+void RSP_ProcessDList()
+{
+	RSP.LLE = false;
+
+	if (ConfigOpen || dwnd().isResizeWindow()) {
+		*REG.MI_INTR |= MI_INTR_DP;
+		CheckInterrupts();
+		return;
+	}
+
+	// Experimental stereoscopic 3D walks the list once per eye. The list lives in RDRAM and the CPU
+	// does not run in between, so the second walk reads the same commands.
+	const u32 passes = config.stereo.mode == Config::stereoBothEyes ? 2U : 1U;
+	for (u32 pass = 0; pass < passes; ++pass) {
+		gSPSetStereoEye(passes == 1
+			? config.stereo.mode
+			: (pass == 0 ? Config::stereoLeftEye : Config::stereoRightEye));
+		_runDisplayList();
+		if (RSP.infloop && REG.SP_STATUS != nullptr)
+			break;
+	}
+	gSPSetStereoEye(config.stereo.mode);
 
 	if (RSP.infloop && REG.SP_STATUS) {
 		*REG.SP_STATUS &= ~(SP_STATUS_TASKDONE | SP_STATUS_HALT | SP_STATUS_BROKE);

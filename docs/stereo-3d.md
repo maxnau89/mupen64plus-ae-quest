@@ -59,17 +59,38 @@ projection layer fed from two textures rather than new plumbing.
    the shift grows with distance, while the HUD and the "PRESS START" overlay stay on exactly the
    same pixels, because screen space geometry never reaches the vertex transform. The hook point and
    the 2D exclusion are both right.
-2. **Find out whether the list can be replayed.** Call the walk twice into two framebuffers with the
-   side effects disabled, and see which games survive. This decides whether the idea is real.
-3. **Wire it into the VR layer** so each eye gets its own image instead of one shared shear.
+2. ~~**Find out whether the list can be replayed.**~~ **It can.** `RSP_ProcessDList()` now walks the
+   list once per eye when the mode is *Both eyes*, and Super Mario 64 keeps running with a clean,
+   complete picture. Nothing had to be suppressed for it: the list lives in RDRAM, the CPU does not
+   run in between, and the setup block at the top of each walk resets the PC, the matrix stack and
+   the geometry mode from DMEM, so the second walk starts from the same state as the first. Both
+   passes still draw into the same framebuffer, so the second overwrites the first — that is what
+   step 3 changes.
+3. **Wire it into the VR layer** so each eye gets its own image: capture the first pass into its own
+   texture before the second pass clears the framebuffer, then submit the pair to the projection
+   layer instead of one quad.
 4. **Measure.** Two passes double the graphics cost. N64 emulation is cheap on a Quest 3, but
-   framebuffer effects are not.
+   framebuffer effects are not. Untested so far.
 
-Step 2 is where this lives or dies. Worth finding out early, before building anything around it.
+The open questions are now about how far this holds. It has only been tried on Super Mario 64, and
+games that lean on framebuffer effects, or write back to RDRAM mid-frame, may not take a second walk
+so quietly.
+
+## Microcodes that bring their own matrix
+
+Most games go through `_gSPCombineMatrices()`, but a few compute the combined matrix themselves and
+install it directly, which bypasses the shear. Those need `gSPApplyStereo()` called by hand:
+
+- `F5Indi_Naboo` — Star Wars Episode I Racer, Battle for Naboo. **Hooked.** This is why Racer showed
+  no effect at first.
+- `ZSort` — World Driver Championship and friends. **Hooked.**
+- `ZSortBOSS` — **not hooked.** It can also store the combined matrix back to RDRAM, and a sheared
+  matrix written into the game's own memory would corrupt its state. It needs the unsheared matrix
+  kept alongside before it can be touched.
 
 ## What works today
 
-One eye at a time, as a per ROM setting under **Stereoscopic 3D (experimental)** in a game's
+One eye at a time, or a double walk that renders both in turn, as a per ROM setting under **Stereoscopic 3D (experimental)** in a game's
 settings: an eye, a separation and a convergence depth. Switching between the left and the right eye
 shows the parallax the finished feature would give each eye, but both eyes still see the same image,
 so there is no depth yet. It is a measuring tool for finding good separation and convergence values

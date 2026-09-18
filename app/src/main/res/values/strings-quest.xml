@@ -111,5 +111,6 @@
     <string name="stereo3dSeparation_title">Eye separation</string>
     <string name="stereo3dSeparation_summary">How far the eye moves aside. Thousandths of a clip unit.</string>
     <string name="stereo3dConvergence_title">Convergence depth</string>
-    <string name="stereo3dConvergence_summary">Depth that stays put. Nearer geometry comes towards you, farther geometry recedes.</string>
+    <string name="stereo3dConvergence_summary">Depth that stays put, in the game’s own units. Nearer geometry comes towards you, farther geometry recedes. Differs wildly per game.</string>
+    <string name="stereo3dMode_entryBoth">Both eyes (double pass)</string>
 </resources>

@@ -828,6 +828,8 @@ void F5INDI_GenVertices(u32 _w0, u32 _w1)
 	f32 combined[4][4];
 	memcpy(combined, gSP.matrix.combined, sizeof(combined));
 	memcpy(gSP.matrix.combined, getIndiData().mtx_vtx_gen, sizeof(gSP.matrix.combined));
+	// This microcode brings its own combined matrix, so the stereo shear has to be applied here
+	gSPApplyStereo(gSP.matrix.combined);
 
 	const SWVertex * vertex = CAST_DMEM(const SWVertex*, 0x170);
 	bool verticesToProcess[32];

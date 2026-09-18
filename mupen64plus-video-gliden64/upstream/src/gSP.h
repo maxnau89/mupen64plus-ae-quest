@@ -201,6 +201,13 @@ void gSPSetDMATexOffset(u32 _addr);
 void gSPSetVertexColorBase( u32 base );
 void gSPCombineMatrices(u32 _mode);
 
+/** Eye the current display list walk renders, one of Config::StereoMode. */
+void gSPSetStereoEye(u32 _eye);
+
+/** Shears a combined matrix for the current eye. Microcodes that install their own combined matrix
+ *  have to call this themselves, the shear in gSPCombineMatrices never sees theirs. */
+void gSPApplyStereo(f32 matrix[4][4]);
+
 void gSPTriangle(u32 v0, u32 v1, u32 v2);
 void gSP1Triangle(u32 v0, u32 v1, u32 v2);
 void gSP2Triangles(const u32 v00, const u32 v01, const u32 v02, const u32 flag0,

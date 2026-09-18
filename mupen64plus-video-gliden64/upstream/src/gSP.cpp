@@ -53,13 +53,22 @@ void gSPFlushTriangles()
 // Experimental stereoscopic 3D. Shifts clip space x by separation * (w - convergence), which is the
 // eye offset plus the matching frustum shear, so geometry at the convergence depth does not move.
 // Vertices are transformed as a row vector, so x reads column 0 and w reads column 3.
-static
-void _gSPApplyStereo(f32 matrix[4][4])
+static u32 l_stereoEye = Config::stereoOff;
+
+void gSPSetStereoEye(u32 _eye)
 {
-	if (config.stereo.mode == Config::stereoOff)
+	if (l_stereoEye == _eye)
+		return;
+	l_stereoEye = _eye;
+	gSP.changed |= CHANGED_MATRIX;
+}
+
+void gSPApplyStereo(f32 matrix[4][4])
+{
+	if (l_stereoEye != Config::stereoLeftEye && l_stereoEye != Config::stereoRightEye)
 		return;
 
-	const f32 separation = config.stereo.mode == Config::stereoLeftEye
+	const f32 separation = l_stereoEye == Config::stereoLeftEye
 		? -config.stereo.separation : config.stereo.separation;
 	for (int i = 0; i < 4; ++i)
 		matrix[i][0] += separation * matrix[i][3];
@@ -70,7 +79,7 @@ static
 void _gSPCombineMatrices()
 {
 	MultMatrix(gSP.matrix.projection, gSP.matrix.modelView[gSP.matrix.modelViewi], gSP.matrix.combined);
-	_gSPApplyStereo(gSP.matrix.combined);
+	gSPApplyStereo(gSP.matrix.combined);
 	gSP.changed &= ~CHANGED_MATRIX;
 }
 
@@ -312,7 +321,7 @@ void gSPForceMatrix( u32 mptr )
 	}
 
 	RSP_LoadMatrix(gSP.matrix.combined, address);
-	_gSPApplyStereo(gSP.matrix.combined);
+	gSPApplyStereo(gSP.matrix.combined);
 
 	gSP.changed &= ~CHANGED_MATRIX;
 

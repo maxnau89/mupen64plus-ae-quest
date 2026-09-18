@@ -108,5 +108,6 @@
     <string name="stereo3dSeparation_title">Augenabstand</string>
     <string name="stereo3dSeparation_summary">Wie weit das Auge zur Seite rückt. In Tausendsteln einer Clip-Einheit.</string>
     <string name="stereo3dConvergence_title">Konvergenztiefe</string>
-    <string name="stereo3dConvergence_summary">Tiefe, die stehen bleibt. Näheres kommt auf dich zu, Entfernteres weicht zurück.</string>
+    <string name="stereo3dConvergence_summary">Tiefe, die stehen bleibt, in den Einheiten des Spiels. Näheres kommt auf dich zu, Entfernteres weicht zurück. Von Spiel zu Spiel sehr verschieden.</string>
+    <string name="stereo3dMode_entryBoth">Beide Augen (zwei Durchläufe)</string>
 </resources>

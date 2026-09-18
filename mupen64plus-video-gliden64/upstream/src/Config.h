@@ -207,7 +207,8 @@ struct Config
 	enum StereoMode {
 		stereoOff = 0,
 		stereoLeftEye = 1,
-		stereoRightEye = 2
+		stereoRightEye = 2,
+		stereoBothEyes = 3   // walks the display list once per eye
 	};
 
 	struct {

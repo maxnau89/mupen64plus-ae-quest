@@ -594,7 +594,7 @@ public class GamePrefs
 
         stereo3dMode = getSafeInt( mPreferences, STEREO_3D_MODE, 0 );
         stereo3dSeparation = mPreferences.getInt( STEREO_3D_SEPARATION, 30 );
-        stereo3dConvergence = mPreferences.getInt( STEREO_3D_CONVERGENCE, 8 );
+        stereo3dConvergence = mPreferences.getInt( STEREO_3D_CONVERGENCE, 500 );
 
         if (enable64DdSupport) {
             String tempIdlPath64dd = mPreferences.getString(IDL_PATH_64DD, "");

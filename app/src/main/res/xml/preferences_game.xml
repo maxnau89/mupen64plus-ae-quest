@@ -122,13 +122,13 @@
             mupen64:units="" />
 
         <paulscode.android.mupen64plusae.preference.SeekBarPreference
-            android:defaultValue="8"
+            android:defaultValue="500"
             android:key="stereo3dConvergence"
             android:summary="@string/stereo3dConvergence_summary"
             android:title="@string/stereo3dConvergence_title"
-            mupen64:maximumValue="40"
-            mupen64:minimumValue="1"
-            mupen64:stepSize="1"
+            mupen64:maximumValue="5000"
+            mupen64:minimumValue="0"
+            mupen64:stepSize="50"
             mupen64:units="" />
     </androidx.preference.PreferenceScreen>
 

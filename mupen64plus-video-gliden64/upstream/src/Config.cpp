@@ -139,7 +139,7 @@ void Config::resetToDefaults()
 
 	stereo.mode = stereoOff;
 	stereo.separation = 0.03f;
-	stereo.convergence = 8.0f;
+	stereo.convergence = 500.0f;
 
 	onScreenDisplay.vis = 0;
 	onScreenDisplay.fps = 0;
