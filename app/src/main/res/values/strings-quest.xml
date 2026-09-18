@@ -102,7 +102,7 @@
     <string name="questDock_exit">Exit</string>
     <string name="questDock_slot">Slot %1$d</string>
     <string name="stereo3d_title">Stereoscopic 3D (experimental)</string>
-    <string name="stereo3d_summary">Render the scene from a shifted eye. Unfinished, expect glitches.</string>
+    <string name="stereo3d_summary">Render the scene once per eye. Needs the GLideN64 video plug-in, which it selects on its own. Unfinished, expect glitches.</string>
     <string name="stereo3dMode_title">Eye</string>
     <string name="stereo3dMode_default" translatable="false">0</string>
     <string name="stereo3dMode_entryOff">Off</string>

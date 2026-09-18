@@ -17,6 +17,7 @@
 #include "Config.h"
 #include "TextureFilterHandler.h"
 #include "DisplayWindow.h"
+#include "StereoFrames.h"
 
 using namespace std;
 
@@ -199,6 +200,9 @@ void RSP_ProcessDList()
 		_runDisplayList();
 		if (RSP.infloop && REG.SP_STATUS != nullptr)
 			break;
+		// The right eye draws into the same buffer, so put the left one aside first
+		if (passes == 2 && pass == 0)
+			StereoFrames::get().captureLeftEye(frameBufferList().getCurrent());
 	}
 	gSPSetStereoEye(config.stereo.mode);
 

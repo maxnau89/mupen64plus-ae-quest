@@ -63,4 +63,17 @@ public class Plugin
         enabled = !name.equals("dummy");
         path = enabled ? name : "dummy";
     }
+
+    /**
+     * Instantiates a new plug-in meta-info object for a plug-in chosen by the app rather than by
+     * the user, e.g. because a feature only works with that one.
+     *
+     * @param pluginName The name of the plug-in, with extension, without parent directory.
+     */
+    public Plugin( String pluginName )
+    {
+        name = pluginName;
+        enabled = !name.equals("dummy");
+        path = enabled ? name : "dummy";
+    }
 }

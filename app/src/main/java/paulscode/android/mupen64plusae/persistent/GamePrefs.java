@@ -478,7 +478,11 @@ public class GamePrefs
 
         rspPluginLib = AppData.RspPlugin.getPlugin(rspSetting);
         rspHleVideo = rspPluginLib.isHle();
-        videoPlugin = new Plugin( emulationProfile, "videoPlugin" );
+        // Experimental stereoscopic 3D only exists in GLideN64, so it picks the plug-in
+        final int stereoMode = getSafeInt( mPreferences, STEREO_3D_MODE, 0 );
+        videoPlugin = stereoMode != 0
+                ? new Plugin( AppData.VideoPlugin.GLIDEN64.getPluginLib() )
+                : new Plugin( emulationProfile, "videoPlugin" );
         videoPluginLib = AppData.VideoPlugin.getPlugin(videoPlugin.name);
         audioPluginLib = AppData.AudioPlugin.getPlugin(mGlobalPrefs);
 
@@ -593,7 +597,7 @@ public class GamePrefs
         enable64DdSupport = mPreferences.getBoolean( SUPPORT_64DD, false );
 
         stereo3dMode = getSafeInt( mPreferences, STEREO_3D_MODE, 0 );
-        stereo3dSeparation = mPreferences.getInt( STEREO_3D_SEPARATION, 30 );
+        stereo3dSeparation = mPreferences.getInt( STEREO_3D_SEPARATION, 25 );
         stereo3dConvergence = mPreferences.getInt( STEREO_3D_CONVERGENCE, 500 );
 
         if (enable64DdSupport) {

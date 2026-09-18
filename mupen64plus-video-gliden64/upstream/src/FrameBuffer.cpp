@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <vector>
 #include "FrameBuffer.h"
+#include "StereoFrames.h"
 #include "DepthBuffer.h"
 #include "N64.h"
 #include "RSP.h"
@@ -1624,6 +1625,26 @@ void FrameBufferList::renderBuffer()
 	}
 	blitParams.readBuffer = readBuffer;
 	blitParams.invertY = config.frameBufferEmulation.enableOverscan == 0;
+
+	// Experimental stereoscopic 3D: the two walks of the display list go out side by side, the left
+	// eye in the left half and the right eye, which is what is still in the buffer, in the right.
+	FrameBuffer * pLeftEye = config.stereo.mode == Config::stereoBothEyes
+		? StereoFrames::get().leftEye() : nullptr;
+	if (pLeftEye != nullptr) {
+		const s32 halfWidth = (blitParams.dstX1 - blitParams.dstX0) / 2;
+		const s32 dstX0 = blitParams.dstX0;
+
+		GraphicsDrawer::BlitOrCopyRectParams leftParams = blitParams;
+		leftParams.tex[0] = pLeftEye->m_pTexture;
+		leftParams.srcWidth = pLeftEye->m_pTexture->width;
+		leftParams.srcHeight = pLeftEye->m_pTexture->height;
+		leftParams.readBuffer = pLeftEye->m_FBO;
+		leftParams.dstX1 = dstX0 + halfWidth;
+		drawer.copyTexturedRect(leftParams);
+
+		blitParams.dstX0 = dstX0 + halfWidth;
+		StereoFrames::get().reset();
+	}
 
 	drawer.copyTexturedRect(blitParams);
 

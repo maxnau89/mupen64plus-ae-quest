@@ -1,101 +1,137 @@
-# Idea: real stereoscopic 3D for N64 games
+# Stereoscopic 3D for N64 games
 
 Dolphin VR gives GameCube and Wii games a per-eye view they never had: it takes the projection
 matrix the game hands the GPU, shifts the camera left and right, and renders the scene twice. The
 result is genuine depth, not a flat picture on a big screen.
 
-The same trick should be possible on the N64. This note records what I found while looking for the
-hook points, so the work can start from something concrete instead of from scratch.
+This does the same for the N64. **It works**, as an experimental per ROM setting. This note is both
+the design record and the handover: what is built, what is verified, and what is left.
 
-## Why the N64 is a good candidate
+## Status
 
-The N64 has no hardware transform stage that a plugin has to reverse engineer. GLideN64 emulates
-the RSP vertex pipeline **on the CPU**, and it keeps the matrices the game pushed:
+Working end to end on the Android emulator with Super Mario 64: the display list is walked once per
+eye, both eye views come out side by side in one image, and the VR layer hands each eye its half.
+Verified from plugin logs and from a side-by-side screenshot with visible, depth-dependent parallax.
+
+**Not yet tried in the headset.** Everything below the plugin has only been seen on a flat screen.
+
+## How it works
+
+**The shear.** GLideN64 emulates the RSP vertex pipeline on the CPU and keeps the matrices the game
+pushed, so there is one place where an eye offset has to be applied:
 
 - `gSP.matrix.projection` and `gSP.matrix.modelView[]` in
   [`gSP.h`](../mupen64plus-video-gliden64/upstream/src/gSP.h)
-- `_gSPCombineMatrices()` in [`gSP.cpp`](../mupen64plus-video-gliden64/upstream/src/gSP.cpp)
-  multiplies them into `gSP.matrix.combined`
+- `_gSPCombineMatrices()` multiplies them into `gSP.matrix.combined`
 - `gSPProcessVertex()` transforms every vertex with that matrix before anything reaches the GPU
 
-So there is exactly one place where a per-eye offset has to be applied. That is the part Dolphin had
-to fight for, and here it is already in plain sight.
+`gSPApplyStereo()` in [`gSP.cpp`](../mupen64plus-video-gliden64/upstream/src/gSP.cpp) shears that
+matrix:
 
-The camera offset itself is a shear on the combined matrix rather than a translation of the eye:
-shifting the eye sideways also has to shift the projection centre, otherwise the two images
-converge at infinity and the picture hurts. Screen-space geometry (`G_TEXRECT`, anything drawn
-with `gSPTextureRectangle`) must be left alone.
+```
+x' = x + separation * (w - convergence)
+```
 
-## The hard part: drawing the frame twice
+which is the eye offset plus the matching frustum shear. Geometry at the convergence depth does not
+move, nearer geometry gets crossed parallax, distant geometry approaches a constant offset — the
+same behaviour as a real stereo camera. Vertices are transformed as a row vector, so x reads column
+0 and w reads column 3.
 
-Dolphin can replay the command FIFO. GLideN64 has no equivalent: the display list is walked once per
-frame by `RSP_ProcessDList()` in
-[`RSP.cpp`](../mupen64plus-video-gliden64/upstream/src/RSP.cpp), driven by the core.
+Screen space geometry (`G_TEXRECT` and friends) never reaches the vertex transform, so HUDs and 2D
+overlays are excluded for free. Confirmed: Super Mario 64's life counter and "PRESS START" stay on
+identical pixels in both eyes.
 
-Two ways out:
+**The double walk.** `RSP_ProcessDList()` in
+[`RSP.cpp`](../mupen64plus-video-gliden64/upstream/src/RSP.cpp) walks the list twice when the mode is
+*Both eyes*. Nothing had to be suppressed for the replay: the list lives in RDRAM, the CPU does not
+run in between, and the setup block at the top of each walk resets the PC, the matrix stack and the
+geometry mode from DMEM, so the second walk starts from the same state as the first.
 
-**Replay the display list.** The list lives in RDRAM and the CPU does not run while the plugin
-works, so walking it a second time should see identical data. The risk is the side effects: DP
-commands, framebuffer emulation writing back into RDRAM, depth buffer copies, the microcode state
-set up at the top of `RSP_ProcessDList`. A second pass would need those suppressed, and the
-framebuffer would have to be switched between the passes. This is the honest route to real stereo.
+**Keeping both eyes.** Both walks draw into the same N64 frame buffer, so
+[`StereoFrames`](../mupen64plus-video-gliden64/upstream/src/StereoFrames.cpp) blits that buffer into
+its own texture after the first walk. `FrameBufferList::renderBuffer()` then draws the pair side by
+side: the kept left eye into the left half of the output, the live buffer, which is the right eye,
+into the right half.
 
-**Reproject from depth.** Render once, keep the depth buffer, warp the image into two eyes. Much
-cheaper and entirely inside our own code, but everything the camera could not see stays hidden, so
-edges smear. It looks like depth, it does not hold up to head movement.
+**The VR layer.** `quest_xr.cpp` submits the game quad twice when stereo is on, once per eye, using
+`XrCompositionLayerQuad::eyeVisibility` and a `subImage.imageRect` covering one half of the image.
+The quad keeps its normal size, so each half is stretched back to full width. No extra swapchain is
+needed. `QuestXr.setStereoGame()` turns it on, called from `GameActivity` when the ROM's stereo mode
+is *Both eyes*.
 
-## What it would need on our side
+## The trap that cost the most time
 
-The VR module is ready for it. `quest_xr.cpp` already creates per-eye swapchains and submits a
-stereo projection layer for the 3D controller, so a stereo game view needs a second game quad or a
-projection layer fed from two textures rather than new plumbing.
+**The app's default video plug-in is Glide64mk2, not GLideN64.** All of this lives in GLideN64, so
+for a long while none of it ran and every test looked like "nothing happens" — including the first
+report from the headset. Worse, an early screenshot was misread as proof that the shear worked when
+it was really just what Super Mario 64's title screen looks like.
 
-## Suggested order
+`GamePrefs` now selects GLideN64 whenever a ROM's stereo mode is not off, overriding the emulation
+profile. If you change anything here, check the log line
+`CoreInterface: Using plugin for type: M64PLUGIN_GFX:` before trusting any visual result.
 
-1. ~~**Prove the matrix hook.**~~ **Done.** `_gSPApplyStereo()` in
-   [`gSP.cpp`](../mupen64plus-video-gliden64/upstream/src/gSP.cpp) shears the combined matrix, driven
-   by the `StereoMode`, `StereoSeparation` and `StereoConvergence` config options and a per ROM
-   setting in the app. Super Mario 64's attract demo confirms it: the 3D scene shifts sideways and
-   the shift grows with distance, while the HUD and the "PRESS START" overlay stay on exactly the
-   same pixels, because screen space geometry never reaches the vertex transform. The hook point and
-   the 2D exclusion are both right.
-2. ~~**Find out whether the list can be replayed.**~~ **It can.** `RSP_ProcessDList()` now walks the
-   list once per eye when the mode is *Both eyes*, and Super Mario 64 keeps running with a clean,
-   complete picture. Nothing had to be suppressed for it: the list lives in RDRAM, the CPU does not
-   run in between, and the setup block at the top of each walk resets the PC, the matrix stack and
-   the geometry mode from DMEM, so the second walk starts from the same state as the first. Both
-   passes still draw into the same framebuffer, so the second overwrites the first — that is what
-   step 3 changes.
-3. **Wire it into the VR layer** so each eye gets its own image: capture the first pass into its own
-   texture before the second pass clears the framebuffer, then submit the pair to the projection
-   layer instead of one quad.
-4. **Measure.** Two passes double the graphics cost. N64 emulation is cheap on a Quest 3, but
-   framebuffer effects are not. Untested so far.
+## The settings
 
-The open questions are now about how far this holds. It has only been tried on Super Mario 64, and
-games that lean on framebuffer effects, or write back to RDRAM mid-frame, may not take a second walk
-so quietly.
+Per ROM, under **Stereoscopic 3D (experimental)** in a game's settings:
+
+| Setting | Meaning |
+|---|---|
+| Eye | Off, Left eye, Right eye, or Both eyes (double pass) |
+| Eye separation | Parallax at infinity, in thousandths of a clip unit. 0..120, default 25 |
+| Convergence depth | Depth that keeps zero parallax, in the game's own units. 0..5000, default 500 |
+
+The single-eye modes render one view for both eyes. They give no depth and exist for tuning: switch
+between left and right and watch how far things move.
+
+Convergence is in the same units as the clip space w, which on the N64 is whatever scale the game
+chose for its world — hundreds in some games, thousands in others. That is why it is per ROM, and
+why the first version's 1..40 range was useless.
+
+Config options reaching the plugin: `StereoMode`, `StereoSeparation`, `StereoConvergence` in the
+`Video-GLideN64` section, written by `NativeConfigFiles`.
+
+## What is left
+
+1. **Try it in the headset.** Nothing below the plugin has been seen in VR. The eye assignment may
+   well be swapped — if depth looks inverted, swap `XR_EYE_VISIBILITY_LEFT` and `RIGHT` in
+   `quest_xr.cpp`, or the sign in `gSPApplyStereo()`.
+2. **Measure the cost.** Two walks double the graphics work and the vertex transform runs on the
+   CPU. Untested.
+3. **Half horizontal resolution.** Both eyes share one image, so each gets half the width. Giving
+   the game surface double width would fix it, at the cost of touching the aspect ratio handling in
+   `renderBuffer()`.
+4. **Try more games.** Only Super Mario 64 so far. Games that lean on framebuffer effects, or write
+   back to RDRAM mid-frame, may not take a second walk so quietly.
+5. **`ZSortBOSS` is not hooked.** It can store the combined matrix back to RDRAM, and a sheared
+   matrix written into the game's own memory would corrupt its state. It needs the unsheared matrix
+   kept alongside first.
+6. **Per game defaults.** Good separation and convergence values differ wildly. A small table keyed
+   by ROM header name, like GLideN64's own `GLideN64.custom.ini`, would spare everyone the tuning.
 
 ## Microcodes that bring their own matrix
 
 Most games go through `_gSPCombineMatrices()`, but a few compute the combined matrix themselves and
 install it directly, which bypasses the shear. Those need `gSPApplyStereo()` called by hand:
 
-- `F5Indi_Naboo` — Star Wars Episode I Racer, Battle for Naboo. **Hooked.** This is why Racer showed
-  no effect at first.
+- `F5Indi_Naboo` — Star Wars Episode I Racer, Battle for Naboo. **Hooked.**
 - `ZSort` — World Driver Championship and friends. **Hooked.**
-- `ZSortBOSS` — **not hooked.** It can also store the combined matrix back to RDRAM, and a sheared
-  matrix written into the game's own memory would corrupt its state. It needs the unsheared matrix
-  kept alongside before it can be touched.
+- `ZSortBOSS` — **not hooked**, see above.
 
-## What works today
+If a game shows no effect at all, check its microcode first.
 
-One eye at a time, or a double walk that renders both in turn, as a per ROM setting under **Stereoscopic 3D (experimental)** in a game's
-settings: an eye, a separation and a convergence depth. Switching between the left and the right eye
-shows the parallax the finished feature would give each eye, but both eyes still see the same image,
-so there is no depth yet. It is a measuring tool for finding good separation and convergence values
-per game, not a feature to play with.
+## Files
 
-Convergence is in the same units as the clip space w, which on the N64 is whatever scale the game
-chose for its world. A value that centres the depth in one game means nothing in another, which is
-why the setting is per ROM.
+| File | What changed |
+|---|---|
+| `mupen64plus-video-gliden64/upstream/src/gSP.cpp/.h` | `gSPApplyStereo()`, `gSPSetStereoEye()` |
+| `mupen64plus-video-gliden64/upstream/src/RSP.cpp` | `_runDisplayList()` split out, walked once per eye |
+| `mupen64plus-video-gliden64/upstream/src/StereoFrames.cpp/.h` | keeps the left eye between walks |
+| `mupen64plus-video-gliden64/upstream/src/FrameBuffer.cpp` | side by side output in `renderBuffer()` |
+| `mupen64plus-video-gliden64/upstream/src/Config.cpp/.h`, `mupenplus/Config_mupenplus.cpp` | the three config options |
+| `quest-xr/src/main/cpp/quest_xr.cpp` | one quad per eye, `nativeSetStereoGame` |
+| `app/.../game/xr/QuestXr.java` | `setStereoGame()` |
+| `app/.../game/GameActivity.java` | turns it on for the ROM |
+| `app/.../persistent/GamePrefs.java` | the three settings, forces GLideN64 |
+| `app/.../util/Plugin.java` | constructor for a plug-in the app picks itself |
+| `app/.../jni/NativeConfigFiles.java` | writes the options into mupen64plus.cfg |
+| `app/src/main/res/xml/preferences_game.xml` | the settings screen |

@@ -168,6 +168,9 @@ struct XrState {
     jmethodID onScreenMoved = nullptr;
     jmethodID onPointer = nullptr;
 
+    // The game quad holds two eye views side by side, drawn by the emulator's stereo mode
+    std::atomic<bool> stereoGame{false};
+
     // Pointer ray at the menu quad, only while pointing is enabled
     std::atomic<bool> pointerEnabled{false};
     bool pointerHit = false;          // frame thread only
@@ -1337,10 +1340,10 @@ void renderFrame(XrState& xr, JNIEnv* env) {
     }
 
     XrCompositionLayerPassthroughFB passthroughLayer{XR_TYPE_COMPOSITION_LAYER_PASSTHROUGH_FB};
-    XrCompositionLayerQuad quadLayers[QUAD_COUNT];
+    XrCompositionLayerQuad quadLayers[QUAD_COUNT + 1];  // the game quad needs one per eye in stereo
     XrCompositionLayerProjection projectionLayer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
     XrCompositionLayerProjectionView projectionViews[2];
-    const XrCompositionLayerBaseHeader* layers[QUAD_COUNT + 2];
+    const XrCompositionLayerBaseHeader* layers[QUAD_COUNT + 3];
     uint32_t layerCount = 0;
 
     if (frameState.shouldRender) {
@@ -1378,6 +1381,22 @@ void renderFrame(XrState& xr, JNIEnv* env) {
             }
             layer.size = {settings[i].width,
                           settings[i].width * static_cast<float>(quad.height) / static_cast<float>(quad.width)};
+
+            // In stereo the emulator draws both eyes into one image, side by side. Each eye gets the
+            // half that belongs to it, stretched back over the same quad.
+            if (i == QUAD_GAME && xr.stereoGame.load() && quad.width >= 2) {
+                const int32_t halfWidth = quad.width / 2;
+                XrCompositionLayerQuad& rightLayer = quadLayers[QUAD_COUNT];
+                rightLayer = layer;
+                layer.eyeVisibility = XR_EYE_VISIBILITY_LEFT;
+                layer.subImage.imageRect = {{0, 0}, {halfWidth, quad.height}};
+                rightLayer.eyeVisibility = XR_EYE_VISIBILITY_RIGHT;
+                rightLayer.subImage.imageRect = {{halfWidth, 0}, {halfWidth, quad.height}};
+                layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer);
+                layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&rightLayer);
+                continue;
+            }
+
             layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&layer);
         }
 
@@ -1747,6 +1766,14 @@ JNIEXPORT void JNICALL
 Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetPointerEnabled(JNIEnv*, jclass, jboolean enabled) {
     if (gXr != nullptr) {
         gXr->pointerEnabled = enabled;
+    }
+}
+
+// The emulator renders both eyes into the game quad, side by side
+JNIEXPORT void JNICALL
+Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetStereoGame(JNIEnv*, jclass, jboolean enabled) {
+    if (gXr != nullptr) {
+        gXr->stereoGame = enabled;
     }
 }
 

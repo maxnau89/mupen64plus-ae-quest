@@ -112,13 +112,13 @@
             android:title="@string/stereo3dMode_title" />
 
         <paulscode.android.mupen64plusae.preference.SeekBarPreference
-            android:defaultValue="30"
+            android:defaultValue="25"
             android:key="stereo3dSeparation"
             android:summary="@string/stereo3dSeparation_summary"
             android:title="@string/stereo3dSeparation_title"
             mupen64:maximumValue="120"
             mupen64:minimumValue="0"
-            mupen64:stepSize="5"
+            mupen64:stepSize="1"
             mupen64:units="" />
 
         <paulscode.android.mupen64plusae.preference.SeekBarPreference

@@ -149,9 +149,10 @@ devices that are not a Quest.
 
 ## Ideas
 
-[Real stereoscopic 3D](docs/stereo-3d.md) — giving N64 games a per-eye view they never had, the way
-Dolphin VR does for GameCube and Wii. Notes on where the hook points are and what would decide
-whether it works.
+[Stereoscopic 3D](docs/stereo-3d.md) — giving N64 games a per-eye view they never had, the way
+Dolphin VR does for GameCube and Wii. Built and working on a flat screen as an experimental per ROM
+setting, not yet tried in the headset. The note doubles as a handover: how it works, what is
+verified, and what is left.
 
 ## Credits
 

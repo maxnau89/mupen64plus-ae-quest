@@ -100,7 +100,7 @@
     <string name="questDock_exit">Beenden</string>
     <string name="questDock_slot">Platz %1$d</string>
     <string name="stereo3d_title">Stereoskopisches 3D (experimentell)</string>
-    <string name="stereo3d_summary">Die Szene aus einem versetzten Auge zeichnen. Unfertig, Fehler sind zu erwarten.</string>
+    <string name="stereo3d_summary">Die Szene einmal pro Auge zeichnen. Braucht das Video-Plug-in GLideN64 und wählt es selbst aus. Unfertig, Fehler sind zu erwarten.</string>
     <string name="stereo3dMode_title">Auge</string>
     <string name="stereo3dMode_entryOff">Aus</string>
     <string name="stereo3dMode_entryLeft">Linkes Auge</string>

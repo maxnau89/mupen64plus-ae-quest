@@ -568,6 +568,8 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
                 mQuestSpatialDock = new QuestSpatialDock(QuestXr.getSurface(QuestXr.QUAD_DOCK), XR_DOCK_WIDTH,
                         XR_DOCK_HEIGHT, getResources(), this, mRomDisplayName);
                 mQuestSpatialDock.setVisible(true);
+                // Experimental stereoscopic 3D puts both eyes into the game image, side by side
+                QuestXr.setStereoGame(mGamePrefs.stereo3dMode == 3);
                 mQuestN64Overlay = new QuestN64Overlay(QuestXr.getSurface(QuestXr.QUAD_CONTROLLER),
                         XR_CONTROLLER_WIDTH, XR_CONTROLLER_HEIGHT);
                 mQuestN64Overlay.update(new boolean[AbstractController.NUM_N64_BUTTONS], 0, 0);

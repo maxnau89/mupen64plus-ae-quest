@@ -226,6 +226,14 @@ public class QuestXr
         }
     }
 
+    /** The emulator draws both eyes into the game quad side by side; each eye gets its half. */
+    public static void setStereoGame(boolean enabled)
+    {
+        if (sLibraryLoaded) {
+            nativeSetStereoGame(enabled);
+        }
+    }
+
     /** While enabled, holding a grip moves the game screen with that controller. */
     public static void setGrabEnabled(boolean enabled)
     {
@@ -277,6 +285,7 @@ public class QuestXr
     private static native void nativeSetStickResizeEnabled(boolean enabled);
     private static native void nativeSetGrabEnabled(boolean enabled);
     private static native void nativeSetPointerEnabled(boolean enabled);
+    private static native void nativeSetStereoGame(boolean enabled);
     private static native boolean nativeSetControllerModel(ByteBuffer mesh, Bitmap texture);
     private static native void nativeSetN64State(int buttons, float axisX, float axisY);
     private static native void nativeSetController3dVisible(boolean visible);
