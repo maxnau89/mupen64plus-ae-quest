@@ -289,6 +289,9 @@ public class GamePrefs
     /** Depth that keeps zero parallax */
     public final int stereo3dConvergence;
 
+    /** Tangent-space field-of-view multiplier in percent */
+    public final int stereo3dFov;
+
     /** 64DD IDL path */
     public final String idlPath64Dd;
 
@@ -327,6 +330,7 @@ public class GamePrefs
     static final String STEREO_3D_MODE = "stereo3dMode";
     static final String STEREO_3D_SEPARATION = "stereo3dSeparation";
     static final String STEREO_3D_CONVERGENCE = "stereo3dConvergence";
+    static final String STEREO_3D_FOV = "stereo3dFov";
     static final String IDL_PATH_64DD = "idlPath64dd";
     static final String DISK_PATH_64DD = "diskPath64dd";
     static final String TRANSFER_PAK = "transferPak";
@@ -599,6 +603,7 @@ public class GamePrefs
         stereo3dMode = getSafeInt( mPreferences, STEREO_3D_MODE, 0 );
         stereo3dSeparation = mPreferences.getInt( STEREO_3D_SEPARATION, 8 );
         stereo3dConvergence = mPreferences.getInt( STEREO_3D_CONVERGENCE, 500 );
+        stereo3dFov = mPreferences.getInt( STEREO_3D_FOV, 110 );
 
         if (enable64DdSupport) {
             String tempIdlPath64dd = mPreferences.getString(IDL_PATH_64DD, "");

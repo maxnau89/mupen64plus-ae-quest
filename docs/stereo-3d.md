@@ -11,18 +11,23 @@ the design record and the handover: what is built, what is verified, and what is
 
 Working end to end in the Quest headset with Super Mario 64 and Star Wars Episode I: Racer. The
 display list is walked once per eye, both eye views come out side by side in one image, and the VR
-layer hands each eye its half. Real depth is visible, but the result is not comfortable or generally
-correct enough yet to enable by default.
+layer hands each eye its half. Real depth is visible and the framebuffer/DMEM fixes made it markedly
+more consistent, but it is still experimental and not enabled by default.
+
+The current full-resolution test build has a regression: games render at the visibly sharper
+1280x480 SBS resolution (640x480 per eye), but no 3D effect is perceptible in the headset. The last
+known-good stereoscopic behavior is commit `77bbf56ed`; the full-resolution and FoV work after that
+commit is intentionally kept as a separate step.
 
 The first headset tests found two separate classes of problems:
 
 - Super Mario 64 can lose its skybox and overlays. The first implementation kept only one anonymous
   left-eye framebuffer, although a frame can touch several N64 color images. Copies are now keyed by
   their N64 framebuffer address, and a failed capture duplicates the right eye instead of sending
-  unrelated halves of a mono image to the eyes. This still needs verification in the headset.
+  unrelated halves of a mono image to the eyes. The corrected pairing is verified in the headset.
 - Racer uses a very different clip-space scale. Even a convergence value of 50 could move the pod by
   more than a complete clip unit and make it disappear. The setting can now be adjusted in steps of
-  one and per-vertex parallax is bounded in screen space. This still needs headset verification.
+  one and per-vertex parallax is bounded in screen space. The pod remains visible in headset tests.
 
 ## How it works
 
@@ -72,6 +77,50 @@ The quad keeps its normal size, so each half is stretched back to full width. No
 needed. `QuestXr.setStereoGame()` turns it on, called from `GameActivity` when the ROM's stereo mode
 is *Both eyes*.
 
+**Full per-eye resolution.** The stereo render target is twice the normal video width. Crucially,
+`GameActivity` gives that same doubled width to both the emulator core and the XR producer surface;
+doubling only the XR swapchain leaves GLideN64 drawing both eyes into its left half. The XR layer
+uses half of the doubled texture for each eye, so each view retains the complete configured 4:3
+resolution. The higher resolution is verified visually, but this path currently loses the visible
+stereo effect somewhere after the per-eye vertex transforms.
+
+## Current handoff: full-resolution stereo regression
+
+The diagnostic build installed on the Quest logs the Java settings, XR/core dimensions, GLideN64
+settings, first left-eye capture, and a few transformed vertices for each eye. A live Mario 64 run
+on 2026-09-18 reported:
+
+```text
+XR swapchain: 1280x480
+core: 1280x480
+GLideN64 mode=3 passes=2 separation=0.025 convergence=500 fov=1.100
+left framebuffer captured=1
+left vertex x=2782.6399, w=-678.2900
+right vertex x=2748.7253, w=-678.2900
+```
+
+This rules out the most obvious failures:
+
+- the app does select GLideN64;
+- `StereoMode=3` reaches the plug-in;
+- both display-list walks run;
+- the left framebuffer blit succeeds;
+- the matrix shear produces different clip-space x coordinates for the two eyes;
+- Java, the GLideN64 screen, and the XR game swapchain all agree on 1280x480.
+
+The remaining fault is therefore likely in `FrameBufferList::renderBuffer()` after the per-eye
+textures are selected, the final overscan/default-framebuffer copy, `copyQuad()`'s SurfaceTexture
+copy, or the two OpenXR sub-image rectangles. The next high-value diagnostic is a pixel comparison
+of the final 1280x480 image immediately before `wnd.swapBuffers()`: hash each 640x480 half and
+measure their mean absolute pixel difference. If the halves differ there, inspect `copyQuad()` and
+the submitted `XrCompositionLayerQuad` structures; if they are identical, inspect the final
+GLideN64 blits and overscan buffer dimensions. The VR dock's Photo action was proposed as a quick
+way to acquire this SBS image but was not completed before handoff.
+
+The saved per-ROM separation in the tested profile is 25, not the new default of 8. That is large
+enough that the measured left/right difference should be unmistakable; a too-small default does not
+explain the missing effect.
+
 ## The trap that cost the most time
 
 **The app's default video plug-in is Glide64mk2, not GLideN64.** All of this lives in GLideN64, so
@@ -92,6 +141,7 @@ Per ROM, under **Stereoscopic 3D (experimental)** in a game's settings:
 | Eye | Off, Left eye, Right eye, or Both eyes (double pass) |
 | Eye separation | Parallax at infinity, in thousandths of a clip unit. 0..120, default 8 |
 | Convergence depth | Depth that keeps zero parallax, in the game's own units. 0..5000, default 500 |
+| 3D field of view | Tangent-space projection scale. 100..130%, default 110% |
 
 The single-eye modes render one view for both eyes. They give no depth and exist for tuning: switch
 between left and right and watch how far things move.
@@ -101,41 +151,40 @@ chose for its world — near one in Racer's Factor 5 microcode, hundreds or thou
 That is why it is per ROM. The slider uses steps of one; Racer cannot safely use the old step size
 of 50.
 
+The field-of-view control scales the clip-space x and y coordinates of 3D vertices before the eye
+offset is added. At 100% the game's projection is unchanged; larger values widen it without
+stretching the final image. Screen-space rectangles such as most HUD elements are unaffected.
+Games may cull geometry using their original camera, so high values can expose missing objects,
+skybox edges, or pop-in. Treat it as a per-game experimental control, not a universal correction.
+
 Start headset tuning at separation 5–8. First confirm that both eyes contain the same skybox, HUD,
 and effects, then raise convergence from zero until the intended subject sits on the physical screen
 plane. Do not compensate for a missing layer or a one-eye rendering bug with convergence: that
 creates binocular rivalry and cannot be made comfortable with numeric tuning.
 
-Config options reaching the plugin: `StereoMode`, `StereoSeparation`, `StereoConvergence` in the
-`Video-GLideN64` section, written by `NativeConfigFiles`.
+Config options reaching the plugin: `StereoMode`, `StereoSeparation`, `StereoConvergence`, and
+`StereoFovScale` in the `Video-GLideN64` section, written by `NativeConfigFiles`.
 
 ## What is left
 
-1. **Verify the framebuffer fix in the headset.** Mario's skybox and overlays must be present and
-   identical where appropriate in both single-eye views before comfort tuning starts.
-2. **Verify the convergence safety limit.** `separation * (w - convergence)` used to exceed the
-   entire clip range when a microcode used small `w` values. It is now capped per vertex to the
-   magnitude of the parallax at infinity. Confirm that the pod remains visible and decide whether a
-   projection-derived convergence control would give Racer a more useful depth range.
-3. **Restore all replay-sensitive state.** DMEM is restored to the task input before the right-eye
+1. **Locate the full-resolution stereo regression.** Compare the two final framebuffer halves before
+   swap, then compare them again after `copyQuad()`. The per-eye geometry is already proven distinct.
+   Restore visible stereo without giving up the verified 640x480 per-eye resolution.
+2. **Restore all replay-sensitive state.** DMEM is restored to the task input before the right-eye
    replay and to the first pass result afterwards. RDP state, framebuffer side effects, and RDRAM
    writes still need an audit; replaying a display list is not inherently side-effect free.
-4. **Measure the cost.** Two walks double the graphics work and the vertex transform runs on the
+3. **Measure the cost.** Two walks double the graphics work and the vertex transform runs on the
    CPU. Untested.
-5. **Fix full per-eye resolution.** Simply doubling the Quest swapchain is not sufficient: the
-   emulator's display window still renders into the original-width viewport, putting both SBS views
-   in the left half and leaving the right half empty. Keep the known-correct half-resolution path
-   until the producer viewport and swapchain can be resized together.
-6. **Match angular FoV before patching game projections.** The default 2 m wide screen at 2 m
+4. **Match physical angular FoV.** The default 2 m wide screen at 2 m
    distance covers about 53 degrees horizontally. A 2.31 m screen at that distance covers about 60
    degrees. Tune the physical screen first; changing an N64 projection can expose culled geometry
    and does not automatically fix skyboxes or HUD layouts.
-7. **Try more games.** Games that lean on framebuffer effects, or write
+5. **Try more games.** Games that lean on framebuffer effects, or write
    back to RDRAM mid-frame, may not take a second walk so quietly.
-8. **`ZSortBOSS` is not hooked.** It can store the combined matrix back to RDRAM, and a sheared
+6. **`ZSortBOSS` is not hooked.** It can store the combined matrix back to RDRAM, and a sheared
    matrix written into the game's own memory would corrupt its state. It needs the unsheared matrix
    kept alongside first.
-9. **Per game defaults.** Good separation and convergence values differ wildly. A small table keyed
+7. **Per game defaults.** Good separation, convergence, and FoV values differ wildly. A small table keyed
    by ROM header name, like GLideN64's own `GLideN64.custom.ini`, would spare everyone the tuning.
 
 ## Microcodes that bring their own matrix
@@ -157,11 +206,11 @@ If a game shows no effect at all, check its microcode first.
 | `mupen64plus-video-gliden64/upstream/src/RSP.cpp` | `_runDisplayList()` split out, walked once per eye |
 | `mupen64plus-video-gliden64/upstream/src/StereoFrames.cpp/.h` | keeps the left eye between walks |
 | `mupen64plus-video-gliden64/upstream/src/FrameBuffer.cpp` | side by side output in `renderBuffer()` |
-| `mupen64plus-video-gliden64/upstream/src/Config.cpp/.h`, `mupenplus/Config_mupenplus.cpp` | the three config options |
+| `mupen64plus-video-gliden64/upstream/src/Config.cpp/.h`, `mupenplus/Config_mupenplus.cpp` | the four config options |
 | `quest-xr/src/main/cpp/quest_xr.cpp` | one quad per eye, `nativeSetStereoGame` |
 | `app/.../game/xr/QuestXr.java` | `setStereoGame()` |
 | `app/.../game/GameActivity.java` | turns it on for the ROM |
-| `app/.../persistent/GamePrefs.java` | the three settings, forces GLideN64 |
+| `app/.../persistent/GamePrefs.java` | the four settings, forces GLideN64 |
 | `app/.../util/Plugin.java` | constructor for a plug-in the app picks itself |
 | `app/.../jni/NativeConfigFiles.java` | writes the options into mupen64plus.cfg |
 | `app/src/main/res/xml/preferences_game.xml` | the settings screen |

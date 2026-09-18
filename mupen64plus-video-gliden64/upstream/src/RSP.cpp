@@ -18,6 +18,7 @@
 #include "TextureFilterHandler.h"
 #include "DisplayWindow.h"
 #include "StereoFrames.h"
+#include "Log.h"
 
 using namespace std;
 
@@ -194,6 +195,13 @@ void RSP_ProcessDList()
 	// does not run in between. Microcodes do use DMEM as scratch memory, however, so replay from the
 	// original task input and leave behind the result produced by the first (real) walk.
 	const u32 passes = config.stereo.mode == Config::stereoBothEyes ? 2U : 1U;
+	static bool stereoConfigLogged = false;
+	if (!stereoConfigLogged && config.stereo.mode != Config::stereoOff) {
+		LOG(LOG_MINIMAL, "Stereo diagnostic: mode=%u passes=%u separation=%.6f convergence=%.3f fov=%.3f screen=%ux%u",
+			config.stereo.mode, passes, config.stereo.separation, config.stereo.convergence,
+			config.stereo.fovScale, dwnd().getScreenWidth(), dwnd().getScreenHeight());
+		stereoConfigLogged = true;
+	}
 	u8 initialDmem[0x1000];
 	u8 firstPassDmem[0x1000];
 	bool haveFirstPassDmem = false;
@@ -213,8 +221,16 @@ void RSP_ProcessDList()
 		if (RSP.infloop && REG.SP_STATUS != nullptr)
 			break;
 		// The right eye draws into the same buffer, so put the left one aside first
-		if (passes == 2 && pass == 0)
-			StereoFrames::get().captureLeftEye(frameBufferList().getCurrent());
+		if (passes == 2 && pass == 0) {
+			FrameBuffer * current = frameBufferList().getCurrent();
+			StereoFrames::get().captureLeftEye(current);
+			static bool stereoCaptureLogged = false;
+			if (!stereoCaptureLogged) {
+				LOG(LOG_MINIMAL, "Stereo diagnostic: left framebuffer=%p captured=%d",
+					current, StereoFrames::get().leftEye(current) != nullptr ? 1 : 0);
+				stereoCaptureLogged = true;
+			}
+		}
 	}
 	if (haveFirstPassDmem)
 		memcpy(DMEM, firstPassDmem, sizeof(firstPassDmem));

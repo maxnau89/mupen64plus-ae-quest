@@ -68,6 +68,14 @@ void gSPApplyStereo(f32 matrix[4][4])
 	if (l_stereoEye != Config::stereoLeftEye && l_stereoEye != Config::stereoRightEye)
 		return;
 
+	// Scaling clip-space x/y by the reciprocal widens the original game's projection while
+	// leaving screen-space rectangles (HUD and most overlays) at their intended size.
+	const f32 projectionScale = 1.0f / config.stereo.fovScale;
+	for (int i = 0; i < 4; ++i) {
+		matrix[i][0] *= projectionScale;
+		matrix[i][1] *= projectionScale;
+	}
+
 	const f32 separation = l_stereoEye == Config::stereoLeftEye
 		? -config.stereo.separation : config.stereo.separation;
 	for (int i = 0; i < 4; ++i)
@@ -804,6 +812,13 @@ void gSPApplyStereoConvergence(u32 v, SPVertex * spVtx)
 		const f32 requestedShift = separation * (vtx.w - config.stereo.convergence);
 		const f32 limit = fabsf(separation * vtx.w);
 		const f32 safeShift = max(-limit, min(requestedShift, limit));
+		static u32 loggedVertices[4] = { 0, 0, 0, 0 };
+		if (loggedVertices[l_stereoEye] < 4) {
+			LOG(LOG_MINIMAL, "Stereo vertex: eye=%u xBefore=%.4f w=%.4f matrixShift=%.4f requested=%.4f safe=%.4f xAfter=%.4f",
+				l_stereoEye, vtx.x, vtx.w, matrixShift, requestedShift, safeShift,
+				vtx.x + safeShift - matrixShift);
+			++loggedVertices[l_stereoEye];
+		}
 		vtx.x += safeShift - matrixShift;
 	}
 }

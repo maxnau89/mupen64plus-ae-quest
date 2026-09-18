@@ -731,8 +731,11 @@ void copyQuad(JNIEnv* env, XrState& xr, Quad& quad, const QuadSettings& settings
     glUniform1f(xr.decodeSrgbLocation, xr.decodeSrgb ? 1.0f : 0.0f);
     glUniform1f(xr.opaqueLocation, settings.opaqueSource ? 1.0f : 0.0f);
     if (settings.cornerRadius > 0.0f && settings.width > 0.0f) {
-        const float height = settings.width * static_cast<float>(quad.height) / static_cast<float>(quad.width);
-        const float radiusPixels = settings.cornerRadius / settings.width * static_cast<float>(quad.width);
+        const bool stereoGame = &quad == &xr.quads[QUAD_GAME] && xr.stereoGame.load();
+        const float contentWidth = stereoGame ? static_cast<float>(quad.width) * 0.5f
+                                              : static_cast<float>(quad.width);
+        const float height = settings.width * static_cast<float>(quad.height) / contentWidth;
+        const float radiusPixels = settings.cornerRadius / settings.width * contentWidth;
         glUniform2f(xr.cornerLocation, settings.cornerRadius / settings.width, settings.cornerRadius / height);
         // About one and a half pixels of antialiasing
         glUniform2f(xr.cornerSoftnessLocation, std::min(0.5f, 1.5f / std::max(radiusPixels, 1.0f)), 0.0f);
@@ -1386,6 +1389,8 @@ void renderFrame(XrState& xr, JNIEnv* env) {
             // half that belongs to it, stretched back over the same quad.
             if (i == QUAD_GAME && xr.stereoGame.load() && quad.width >= 2) {
                 const int32_t halfWidth = quad.width / 2;
+                layer.size.height = settings[i].width * static_cast<float>(quad.height) /
+                                    static_cast<float>(halfWidth);
                 XrCompositionLayerQuad& rightLayer = quadLayers[QUAD_COUNT];
                 rightLayer = layer;
                 layer.eyeVisibility = XR_EYE_VISIBILITY_LEFT;

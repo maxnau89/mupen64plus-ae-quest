@@ -555,10 +555,17 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         mGameSurface.setShaderScaleFactor(mGlobalPrefs.shaderScaleFactor);
 
         if (QuestXr.isQuestDevice()) {
+            final int xrGameHeight = mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution)
+                    * mGlobalPrefs.shaderScaleFactor;
+            final int xrGameWidth = getVideoRenderWidth() * mGlobalPrefs.shaderScaleFactor;
+            Log.i(TAG, "Stereo diagnostic: mode=" + mGamePrefs.stereo3dMode
+                    + " separation=" + mGamePrefs.stereo3dSeparation
+                    + " convergence=" + mGamePrefs.stereo3dConvergence
+                    + " fov=" + mGamePrefs.stereo3dFov
+                    + " XR=" + xrGameWidth + "x" + xrGameHeight);
             mQuestTouchController = new QuestTouchController(mCoreFragment, this);
             if (QuestXr.create(this, mQuestTouchController,
-                    mDisplayResolutionData.getResolutionWidth(mGamePrefs.verticalRenderResolution)*mGlobalPrefs.shaderScaleFactor,
-                    mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution)*mGlobalPrefs.shaderScaleFactor,
+                    xrGameWidth, xrGameHeight,
                     XR_MENU_WIDTH, XR_MENU_HEIGHT, XR_CONTROLLER_WIDTH, XR_CONTROLLER_HEIGHT,
                     XR_DOCK_WIDTH, XR_DOCK_HEIGHT)) {
                 mXrMode = true;
@@ -743,9 +750,11 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         if(mCoreFragment != null)
         {
             if (!mCoreFragment.IsInProgress()) {
+                Log.i(TAG, "Stereo diagnostic: core=" + getVideoRenderWidth() + "x"
+                        + mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution));
                 mCoreFragment.startCore(mGlobalPrefs, mGamePrefs, mRomGoodName, mRomDisplayName, mRomPath, mZipPath,
                         mRomMd5, mRomCrc, mRomHeaderName, mRomCountryCode, mRomArtPath, mDoRestart,
-                        mDisplayResolutionData.getResolutionWidth(mGamePrefs.verticalRenderResolution),
+                        getVideoRenderWidth(),
                         mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution),
                         mIsNetplayEnabled);
             }
@@ -897,6 +906,13 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     {
         return (float) mDisplayResolutionData.getResolutionWidth(mGamePrefs.verticalRenderResolution)
                 / mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution);
+    }
+
+    /** Stereo stores two full-resolution eye images side by side in the game render target. */
+    private int getVideoRenderWidth()
+    {
+        final int width = mDisplayResolutionData.getResolutionWidth(mGamePrefs.verticalRenderResolution);
+        return QuestXr.isQuestDevice() && mGamePrefs.stereo3dMode == 3 ? width * 2 : width;
     }
 
     private String getXrScreenPrefPrefix()

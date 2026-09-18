@@ -130,6 +130,16 @@
             mupen64:minimumValue="0"
             mupen64:stepSize="1"
             mupen64:units="" />
+
+        <paulscode.android.mupen64plusae.preference.SeekBarPreference
+            android:defaultValue="110"
+            android:key="stereo3dFov"
+            android:summary="@string/stereo3dFov_summary"
+            android:title="@string/stereo3dFov_title"
+            mupen64:maximumValue="130"
+            mupen64:minimumValue="100"
+            mupen64:stepSize="1"
+            mupen64:units="%" />
     </androidx.preference.PreferenceScreen>
 
     <androidx.preference.CheckBoxPreference

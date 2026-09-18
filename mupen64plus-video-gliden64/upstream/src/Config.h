@@ -215,6 +215,7 @@ struct Config
 		u32 mode;         // one of StereoMode
 		f32 separation;   // eye offset in clip units, 0 is mono
 		f32 convergence;  // depth that keeps zero parallax, in the same units as w
+		f32 fovScale;     // tangent-space field-of-view multiplier, 1 is unchanged
 	} stereo;
 
 	enum CountersPosition {

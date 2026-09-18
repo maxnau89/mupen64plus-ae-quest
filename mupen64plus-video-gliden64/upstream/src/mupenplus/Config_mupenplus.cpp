@@ -297,6 +297,8 @@ bool Config_SetDefault()
 	assert(res == M64ERR_SUCCESS);
 	res = ConfigSetDefaultFloat(g_configVideoGliden64, "StereoConvergence", config.stereo.convergence, "Depth that stays at zero parallax for stereoscopic 3D.");
 	assert(res == M64ERR_SUCCESS);
+	res = ConfigSetDefaultFloat(g_configVideoGliden64, "StereoFovScale", config.stereo.fovScale, "Tangent-space field-of-view multiplier for stereoscopic 3D.");
+	assert(res == M64ERR_SUCCESS);
 
 	//#On screen display settings
 	res = ConfigSetDefaultBool(g_configVideoGliden64, "ShowFPS", config.onScreenDisplay.fps, "Show FPS counter.");
@@ -614,6 +616,9 @@ void Config_LoadConfig()
 	config.stereo.mode = ConfigGetParamInt(g_configVideoGliden64, "StereoMode");
 	config.stereo.separation = ConfigGetParamFloat(g_configVideoGliden64, "StereoSeparation");
 	config.stereo.convergence = ConfigGetParamFloat(g_configVideoGliden64, "StereoConvergence");
+	config.stereo.fovScale = ConfigGetParamFloat(g_configVideoGliden64, "StereoFovScale");
+	if (config.stereo.fovScale < 1.0f)
+		config.stereo.fovScale = 1.0f;
 
 	//#On screen display settings
 	config.onScreenDisplay.fps = ConfigGetParamBool(g_configVideoGliden64, "ShowFPS");
