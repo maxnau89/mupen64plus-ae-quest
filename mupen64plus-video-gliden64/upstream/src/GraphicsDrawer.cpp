@@ -1186,7 +1186,7 @@ void GraphicsDrawer::drawRect(int _ulx, int _uly, int _lrx, int _lry)
 			dropRenderState();
 			return;
 		}
-		if (!fullScreen || gSPImmersiveBackground())
+		if (!fullScreen || gSPImmersiveBackground() || gSPImmersiveClearsShownBuffers())
 			gSPImmersiveRect(m_rect, 4, fullScreen);
 	}
 

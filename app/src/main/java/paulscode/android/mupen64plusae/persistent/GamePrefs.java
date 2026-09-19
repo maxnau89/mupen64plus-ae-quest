@@ -301,6 +301,9 @@ public class GamePrefs
     /** Rendered height per eye in immersive mode, the width is 4:3 */
     public final int stereo3dImmersiveHeight;
 
+    /** Immersive camera moved back, in percent of the nearest scene depth */
+    public final int stereo3dImmersiveDistance;
+
     /** 64DD IDL path */
     public final String idlPath64Dd;
 
@@ -614,6 +617,7 @@ public class GamePrefs
         stereo3dImmersive = mPreferences.getBoolean( STEREO_3D_IMMERSIVE, false );
         stereo3dImmersiveHeight = Math.max( 480, Math.min( 2160,
                 getSafeInt( mPreferences, "stereo3dImmersiveHeight", 1440 ) ) );
+        stereo3dImmersiveDistance = mPreferences.getInt( "stereo3dImmersiveDistance", 0 );
         // Immersive mode renders both eyes, whatever the eye setting says
         stereo3dMode = stereo3dImmersive ? 3 : getSafeInt( mPreferences, STEREO_3D_MODE, 0 );
         stereo3dSeparation = mPreferences.getInt( STEREO_3D_SEPARATION, 30 );

@@ -118,6 +118,8 @@
     <string name="quest_game_stereo_tuning">Ein einzelnes Auge zum Einstellen, gesetzt in den Spieleinstellungen. Antippen schaltet aus.</string>
     <string name="stereo3dImmersive_title">Immersiv</string>
     <string name="stereo3dImmersiveHeight_title">Immersive Auflösung pro Auge</string>
+    <string name="stereo3dImmersiveDistance_title">Immersiver Kameraabstand</string>
+    <string name="stereo3dImmersiveDistance_summary">Setzt die Kamera zurück, für Spiele mit sehr naher Kamera wie Rennspiele. 100 % verdoppelt den Abstand zum nächsten Objekt. Was direkt hinter der alten Kamera liegt, kann fehlen.</string>
     <string name="stereo3dImmersive_summary">Statt einer Leinwand füllt das Spiel dein Sichtfeld, und wenn du den Kopf drehst, dreht sich die Kamera mit. An den Seiten können Teile der Welt fehlen, mit deren Anblick das Spiel nicht gerechnet hat.</string>
     <string name="quest_game_stereo_immersive">Immersiv: Das Spiel füllt dein Sichtfeld und folgt deinem Kopf. Antippen schaltet aus.</string>
     <string name="stereo3dDepthBoost_title">Tiefenverstärker</string>

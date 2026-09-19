@@ -68,6 +68,7 @@ import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 
@@ -648,7 +649,7 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
 
     private void handleGameAction(GameAction action)
     {
-        final GalleryItem item = mSelectedItem;
+        final GalleryItem item = resolveSelectedItem();
         if( item == null || item.romUri == null)
             return;
 
@@ -716,6 +717,27 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
                 FileUtil.deleteFolder(new File(mGlobalPrefs.shaderCacheDir));
             }
         }
+    }
+
+    /**
+     * The selected game with its ROM. When Android recreated this activity while a game ran, the
+     * selection comes back as a placeholder holding only the MD5, and every action on the game page
+     * silently did nothing until the library was opened again.
+     */
+    private GalleryItem resolveSelectedItem()
+    {
+        if (mSelectedItem == null || mSelectedItem.romUri != null) {
+            return mSelectedItem;
+        }
+        for (final List<GalleryItem> items : Arrays.asList(mAllItems, mItemsCache, mRecentItemsCache)) {
+            for (final GalleryItem candidate : items) {
+                if (candidate.romUri != null && mSelectedItem.md5 != null && mSelectedItem.md5.equals(candidate.md5)) {
+                    mSelectedItem = candidate;
+                    return candidate;
+                }
+            }
+        }
+        return mSelectedItem;
     }
 
     public void onGalleryItemClick(GalleryItem item)
@@ -1083,7 +1105,8 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
 
         tagForRefreshNeeded();
 
-        mSelectedItem = null;
+        // The game page stays open behind the game and is rebuilt from this selection on return.
+        // Clearing it left the page on screen with every button pointing at nothing.
         // Launch the game activity
         startGameActivity(romPath, zipPath, romMd5, romCrc, romHeaderName, romCountryCode,
                 romArtPath, romGoodName, romDisplayName, isRestarting, isNetplayEnabled, isNetplayServer);

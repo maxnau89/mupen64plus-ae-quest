@@ -158,6 +158,17 @@
 
         <paulscode.android.mupen64plusae.preference.SeekBarPreference
             android:defaultValue="0"
+            android:dependency="stereo3dImmersive"
+            android:key="stereo3dImmersiveDistance"
+            android:summary="@string/stereo3dImmersiveDistance_summary"
+            android:title="@string/stereo3dImmersiveDistance_title"
+            mupen64:maximumValue="300"
+            mupen64:minimumValue="0"
+            mupen64:stepSize="10"
+            mupen64:units="%" />
+
+        <paulscode.android.mupen64plusae.preference.SeekBarPreference
+            android:defaultValue="0"
             android:key="stereo3dDepthBoost"
             android:summary="@string/stereo3dDepthBoost_summary"
             android:title="@string/stereo3dDepthBoost_title"

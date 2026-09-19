@@ -111,9 +111,11 @@ static f64 l_stereoXSum[4] = {};
 static u32 l_stereoXCount[4] = {};
 
 static void _immersiveBeginFrame();
+static void _immersiveCountVotes();
 
 void gSPStereoBeginFrame()
 {
+	_immersiveCountVotes();
 	_immersiveBeginFrame();
 	{
 		static u32 frames = 0;
@@ -169,13 +171,16 @@ static bool l_immersiveNeedsPose = true;    // a frame was shown since the last 
 static int l_immersivePose = 0;             // id of the pose the current frame is drawn with
 static f32 l_immersiveQ[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};  // camera direction -> head direction
 static f32 l_immersiveTan[2] = {1.0f, 1.0f};  // tangents of the rendered half angles, x and y
-// Screen direction of clip y. Factor 5's Rogue Squadron negates y after the transform, so there +y
-// is down and a head nod would otherwise turn the camera the wrong way.
+// Screen direction of clip y. Factor 5's microcodes negate y after the transform, so there +y is
+// down and a head nod would otherwise turn the camera the wrong way. Set once those vertices show
+// up, since the matrix is built before: those microcodes install it themselves, and it must not be
+// rebuilt from the projection stack.
 static f32 l_flipY = 1.0f;
-static f32 l_combinedFlipY = 1.0f;
 // Whether gSPApplyStereo() sees a matrix combined from the projection stack, or one a microcode
 // installed itself
 static bool l_combiningMatrices = false;
+// How far the camera is moved back, in the game's depth units, for the whole frame
+static f32 l_immersiveDistance = 0.0f;
 static f32 l_gameSx = 1.0f;                 // the game's own projection scales, from its last
 static f32 l_gameSy = 1.33f;                // perspective matrix
 static const int kImmersiveBuffers = 8;
@@ -227,6 +232,14 @@ void _immersiveBeginFrame()
 	l_immersiveTan[0] = tangents[0];
 	l_immersiveTan[1] = tangents[1];
 	l_immersivePose = pose;
+	// The nearest scene depth is measured with the camera already moved back, so that part is taken
+	// off again before scaling
+	if (config.stereo.immersiveDistance > 0.0f && l_haveAutoConvergence) {
+		const f32 nearest = std::max(l_autoConvergence - l_immersiveDistance, l_autoConvergence * 0.1f);
+		l_immersiveDistance += (config.stereo.immersiveDistance * nearest - l_immersiveDistance) * 0.05f;
+	} else {
+		l_immersiveDistance = 0.0f;
+	}
 	l_immersiveActive = true;
 	l_immersiveNeedsPose = false;
 	gSP.changed |= CHANGED_MATRIX;
@@ -271,17 +284,77 @@ void gSPImmersivePresent(u32 _address)
 
 // The game's projection scales. The camera may be part of the matrix, so they are the lengths of
 // the x and y columns relative to the w column, which is exact for a rotation and a uniform scale.
+// Microcodes that install the combined matrix themselves (Factor 5) hand over one per object, and
+// objects can be scaled unevenly, like a stretched engine glow. Their camera is the scale most
+// matrices of a frame agree on, used from the next frame on.
+struct ImmersiveVote { f32 sx, sy; u32 count; };
+static const int kImmersiveVotes = 16;
+static ImmersiveVote l_immersiveVotes[kImmersiveVotes];
+static int l_immersiveVoteCount = 0;
+static bool l_immersiveVoted = false;
+
+static
+void _immersiveVote(f32 sx, f32 sy)
+{
+	for (int i = 0; i < l_immersiveVoteCount; ++i) {
+		ImmersiveVote & vote = l_immersiveVotes[i];
+		if (fabsf(vote.sx - sx) < 0.01f * sx && fabsf(vote.sy - sy) < 0.01f * sy) {
+			++vote.count;
+			return;
+		}
+	}
+	if (l_immersiveVoteCount < kImmersiveVotes)
+		l_immersiveVotes[l_immersiveVoteCount++] = {sx, sy, 1};
+	if (!l_immersiveVoted) {
+		// Nothing agreed on yet: better than the defaults
+		l_gameSx = sx;
+		l_gameSy = sy;
+	}
+}
+
+static
+void _immersiveCountVotes()
+{
+	int best = -1;
+	for (int i = 0; i < l_immersiveVoteCount; ++i)
+		if (best < 0 || l_immersiveVotes[i].count > l_immersiveVotes[best].count)
+			best = i;
+	if (best >= 0) {
+		l_gameSx = l_immersiveVotes[best].sx;
+		l_gameSy = l_immersiveVotes[best].sy;
+		l_immersiveVoted = true;
+	}
+	l_immersiveVoteCount = 0;
+}
+
 static
 void _immersiveMeasureProjection(const f32 m[4][4])
 {
 	const f32 lw = sqrtf(m[0][3] * m[0][3] + m[1][3] * m[1][3] + m[2][3] * m[2][3]);
 	if (lw < 1e-9f)
 		return;
+	{
+		// Diagnostic: scales, off-centre terms and viewport, now and then
+		static u32 calls = 0;
+		if (calls++ % 3000 == 0) {
+			const f32 c33 = lw * lw;
+			LOG(LOG_MINIMAL, "Immersive projection: sx=%.3f sy=%.3f ox=%.3f oy=%.3f flip=%.0f direct=%d vscale=%.1f,%.1f vtrans=%.1f,%.1f",
+				l_gameSx, l_gameSy,
+				(m[0][0] * m[0][3] + m[1][0] * m[1][3] + m[2][0] * m[2][3]) / c33,
+				(m[0][1] * m[0][3] + m[1][1] * m[1][3] + m[2][1] * m[2][3]) / c33,
+				l_flipY, l_combiningMatrices ? 0 : 1,
+				gSP.viewport.vscale[0], gSP.viewport.vscale[1], gSP.viewport.vtrans[0], gSP.viewport.vtrans[1]);
+		}
+	}
 	const f32 sx = sqrtf(m[0][0] * m[0][0] + m[1][0] * m[1][0] + m[2][0] * m[2][0]) / lw;
 	const f32 sy = sqrtf(m[0][1] * m[0][1] + m[1][1] * m[1][1] + m[2][1] * m[2][1]) / lw;
 	if (sx > 0.05f && sx < 50.0f && sy > 0.05f && sy < 50.0f) {
-		l_gameSx = sx;
-		l_gameSy = sy;
+		if (l_combiningMatrices) {
+			l_gameSx = sx;
+			l_gameSy = sy;
+		} else {
+			_immersiveVote(sx, sy);
+		}
 	}
 }
 
@@ -303,6 +376,12 @@ void _immersiveApply(f32 m[4][4])
 {
 	const f32 c3 = m[0][3] * m[0][3] + m[1][3] * m[1][3] + m[2][3] * m[2][3];
 	const f32 A = c3 > 0.0f ? -(m[0][2] * m[0][3] + m[1][2] * m[1][3] + m[2][2] * m[2][3]) / c3 : 0.0f;
+	// Optionally the camera moves back along its own axis: every depth grows by the same amount.
+	// The translation row is what the vertex's homogeneous 1 multiplies.
+	if (l_immersiveDistance > 0.0f) {
+		m[3][3] += l_immersiveDistance;
+		m[3][2] -= A * l_immersiveDistance;
+	}
 	f32 t[4][4] = {};
 	// Rows are the inputs x, y, z, w
 	_immersiveProject(1.0f / l_gameSx, 0.0f, 0.0f, t[0][0], t[0][1], t[0][3]);
@@ -314,7 +393,6 @@ void _immersiveApply(f32 m[4][4])
 	t[3][2] = A - A * t[3][3];
 	for (int i = 0; i < 4; ++i)
 		t[i][1] *= l_flipY;
-	l_combinedFlipY = l_flipY;
 	f32 result[4][4];
 	for (int i = 0; i < 4; ++i)
 		for (int j = 0; j < 4; ++j)
@@ -357,6 +435,13 @@ f32 _stereoSeparation()
 	return l_immersiveActive ? separation * 0.5f / l_immersiveTan[0] : separation;
 }
 
+// Games that install their own matrices, like Factor 5's, clear only their viewport. Immersive mode
+// stretches that viewport over the whole picture, so the border keeps old frames around.
+bool gSPImmersiveClearsShownBuffers()
+{
+	return l_immersiveActive && l_immersiveVoted;
+}
+
 bool gSPImmersiveBackground()
 {
 	return !l_stereoPerspectiveSeen;
@@ -388,6 +473,29 @@ void gSPImmersiveRect(RectVertex * _vertices, u32 _count, bool _fullScreen)
 			v.w = w;
 		}
 		return;
+	}
+	if (l_immersiveVoted && _count > 0) {
+		// Games with their own matrices (Factor 5) fade with an overlay over their whole viewport.
+		// It covers the whole view, pulled out like a sky, or the fade would be a small rectangle.
+		f32 x0 = _vertices[0].x, x1 = x0, y0 = _vertices[0].y, y1 = y0;
+		for (u32 i = 1; i < _count; ++i) {
+			x0 = std::min(x0, _vertices[i].x); x1 = std::max(x1, _vertices[i].x);
+			y0 = std::min(y0, _vertices[i].y); y1 = std::max(y1, _vertices[i].y);
+		}
+		const f32 sw = gDP.scissor.lrx - gDP.scissor.ulx, sh = gDP.scissor.lry - gDP.scissor.uly;
+		if (sw > 8.0f && sh > 8.0f && x1 - x0 >= 0.9f * sw && y1 - y0 >= 0.9f * sh) {
+			for (u32 i = 0; i < _count; ++i) {
+				RectVertex & v = _vertices[i];
+				f32 x, y, z, w;
+				_immersivePlaceSky((v.x - gDP.scissor.ulx) / sw * 2.0f - 1.0f,
+					1.0f - (v.y - gDP.scissor.uly) / sh * 2.0f, v.z, x, y, z, w);
+				v.x = (w + x) * width * 0.5f;
+				v.y = (w - y) * height * 0.5f;
+				v.z = z;
+				v.w = w;
+			}
+			return;
+		}
 	}
 	for (u32 i = 0; i < _count; ++i) {
 		RectVertex & v = _vertices[i];
@@ -1183,6 +1291,9 @@ void gSPApplyStereoConvergence(u32 v, SPVertex * spVtx)
 			if (!l_stereoPerspectiveSeen) {
 				_immersivePlaceSky((vtx.x - matrixShift) / ow, l_flipY * vtx.y / ow, vtx.z / ow, x, y, z, w);
 				x += separation * w;
+			} else if (l_immersiveVoted && (fabsf((vtx.x - matrixShift) / ow) >= 0.95f || fabsf(vtx.y / ow) >= 0.95f)) {
+				// Factor 5 overlays reaching the edge of the screen, such as fades, cover the view
+				_immersivePlaceSky((vtx.x - matrixShift) / ow, l_flipY * vtx.y / ow, vtx.z / ow, x, y, z, w);
 			} else {
 				_immersivePlaceFlat((vtx.x - matrixShift) / ow, l_flipY * vtx.y / ow, vtx.z / ow, x, y, z, w);
 			}
@@ -1288,8 +1399,6 @@ void gSPTransformVertex(u32 v, SPVertex * spVtx, float mtx[4][4])
 template <u32 VNUM>
 void gSPProcessVertex(u32 v, SPVertex * spVtx)
 {
-	if (l_immersiveActive && l_flipY != l_combinedFlipY)
-		gSP.changed |= CHANGED_MATRIX;
 	if (gSP.changed & CHANGED_MATRIX)
 		_gSPCombineMatrices();
 
@@ -1710,7 +1819,6 @@ u32 gSPLoadSWVertexData(const SWVertex *orgVtx, SPVertex * spVtx, u32 vi, u32 n)
 		}
 		l_flipY = -1.0f;
 		gSPProcessVertex<VNUM>(vi, spVtx);
-		l_flipY = 1.0f;
 		for (u32 j = 0; j < VNUM; ++j) {
 			SPVertex & vtx = spVtx[vi+j];
 			vtx.y = -vtx.y;

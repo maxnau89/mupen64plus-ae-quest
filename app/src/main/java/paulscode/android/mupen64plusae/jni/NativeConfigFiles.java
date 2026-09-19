@@ -238,6 +238,7 @@ class NativeConfigFiles
         mupen64plus_cfg.put( "Video-GLideN64", "StereoFovScale", String.valueOf( game.stereo3dFov / 100.0f ) );
         mupen64plus_cfg.put( "Video-GLideN64", "StereoDepthBoost", String.valueOf( game.stereo3dDepthBoost / 100.0f ) );
         mupen64plus_cfg.put( "Video-GLideN64", "StereoImmersive", game.stereo3dImmersive ? "1" : "0" );
+        mupen64plus_cfg.put( "Video-GLideN64", "StereoImmersiveDistance", String.valueOf( game.stereo3dImmersiveDistance / 100.0f ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "bilinearMode", boolToTF( game.glideN64Prefs.bilinearMode ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "enableHalosRemoval", boolToTF( game.glideN64Prefs.enableHalosRemoval ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "MaxAnisotropy", String.valueOf( game.glideN64Prefs.maxAnisotropy ) );

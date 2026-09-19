@@ -121,6 +121,8 @@
     <string name="quest_game_stereo_tuning">Tuning a single eye, set in the game’s settings. Tap to switch off.</string>
     <string name="stereo3dImmersive_title">Immersive</string>
     <string name="stereo3dImmersiveHeight_title">Immersive resolution per eye</string>
+    <string name="stereo3dImmersiveDistance_title">Immersive camera distance</string>
+    <string name="stereo3dImmersiveDistance_summary">Moves the camera back, for games whose camera sits very close, like racing games. 100% doubles the distance to the nearest object. Things right behind the old camera may be missing.</string>
     <string name="stereo3dImmersive_summary">Instead of a screen, the game fills your view and turning your head turns the camera. Parts of the world the game did not expect to be seen may be missing at the sides.</string>
     <string name="quest_game_stereo_immersive">Immersive: the game fills your view and follows your head. Tap to switch off.</string>
     <string name="stereo3dDepthBoost_title">Depth boost</string>

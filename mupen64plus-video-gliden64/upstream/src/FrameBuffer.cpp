@@ -929,6 +929,13 @@ void FrameBufferList::saveBuffer(u32 _address, u16 _format, u16 _size, u16 _widt
 	}
 
 	m_pCurrent->m_isDepthBuffer = _address == gDP.depthImageAddress;
+	// Experimental immersive mode: a screen image drawn for the first time since the last swap
+	// starts black, so nothing of an older frame shows around a game's viewport
+	if (gSPImmersiveClearsShownBuffers() && !m_pCurrent->m_isDepthBuffer && !m_pCurrent->isAuxiliary() &&
+		m_pCurrent->m_swapCount != wnd.getBuffersSwapCount()) {
+		gfxContext.bindFramebuffer(bufferTarget::FRAMEBUFFER, m_pCurrent->m_FBO);
+		gfxContext.clearColorBuffer(0.0f, 0.0f, 0.0f, 0.0f);
+	}
 	StereoFrames::get().noteEntered(m_pCurrent->m_startAddress);
 	m_pCurrent->m_isPauseScreen = m_pCurrent->m_isOBScreen = false;
 	m_pCurrent->m_copied = false;

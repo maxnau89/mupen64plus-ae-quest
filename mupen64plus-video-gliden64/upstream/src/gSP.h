@@ -215,6 +215,7 @@ void gSPApplyStereo(f32 matrix[4][4]);
 struct RectVertex;
 bool gSPImmersiveActive();
 bool gSPImmersiveBackground();
+bool gSPImmersiveClearsShownBuffers();
 void gSPImmersiveFrameDrawn(u32 _address);
 void gSPImmersivePresent(u32 _address);
 void gSPImmersiveRect(RectVertex * _vertices, u32 _count, bool _fullScreen);

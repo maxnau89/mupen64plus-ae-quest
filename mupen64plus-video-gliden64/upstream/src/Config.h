@@ -218,6 +218,7 @@ struct Config
 		f32 fovScale;     // tangent-space field-of-view multiplier, 1 is unchanged
 		f32 depthBoost;   // 0 is physical depth, 1 spreads far geometry the most
 		u32 immersive;    // 1 follows the headset: head rotation turns the camera, headset field of view
+		f32 immersiveDistance;  // immersive camera moved back, in units of the nearest scene depth
 	} stereo;
 
 	enum CountersPosition {
