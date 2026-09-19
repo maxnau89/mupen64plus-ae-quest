@@ -301,6 +301,8 @@ bool Config_SetDefault()
 	assert(res == M64ERR_SUCCESS);
 	res = ConfigSetDefaultFloat(g_configVideoGliden64, "StereoDepthBoost", config.stereo.depthBoost, "Spreads far geometry in depth for stereoscopic 3D, 0..1.");
 	assert(res == M64ERR_SUCCESS);
+	res = ConfigSetDefaultInt(g_configVideoGliden64, "StereoImmersive", config.stereo.immersive, "Follow the headset: head rotation turns the camera (experimental).");
+	assert(res == M64ERR_SUCCESS);
 
 	//#On screen display settings
 	res = ConfigSetDefaultBool(g_configVideoGliden64, "ShowFPS", config.onScreenDisplay.fps, "Show FPS counter.");
@@ -621,6 +623,7 @@ void Config_LoadConfig()
 	config.stereo.fovScale = ConfigGetParamFloat(g_configVideoGliden64, "StereoFovScale");
 	config.stereo.depthBoost = std::max(0.0f, std::min(1.0f,
 		ConfigGetParamFloat(g_configVideoGliden64, "StereoDepthBoost")));
+	config.stereo.immersive = ConfigGetParamInt(g_configVideoGliden64, "StereoImmersive") != 0 ? 1 : 0;
 	if (config.stereo.fovScale < 1.0f)
 		config.stereo.fovScale = 1.0f;
 

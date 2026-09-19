@@ -217,6 +217,15 @@ void GraphicsDrawer::updateScissor(FrameBuffer * _pBuffer) const
 	if (_needAdjustCoordinate(wnd))
 		_adjustScissorX(SX0, SX1, wnd.getAdjustScale());
 
+	// Experimental immersive mode draws the whole picture, including the border the game left
+	if (gSPImmersiveActive() && gDP.colorImage.address != gDP.depthImageAddress &&
+		gDP.colorImage.width >= VI.width * 98 / 100) {
+		SX0 = offsetX;
+		SY0 = offsetY;
+		SX1 = offsetX + static_cast<f32>(gDP.colorImage.width);
+		SY1 = offsetY + static_cast<f32>(VI.height);
+	}
+
 	gfxContext.setScissor(roundup(SX0, scaleX), roundup(SY0, scaleY),
 		std::max(roundup(SX1 - SX0, scaleX), 0), std::max(roundup(SY1 - SY0, scaleY), 0));
 
@@ -1092,6 +1101,20 @@ void GraphicsDrawer::drawLine(u32 _v0, u32 _v1, float _width)
 	dropRenderState();
 }
 
+// Experimental immersive mode: screen rectangles drawn into the picture the player sees are placed
+// where the game's screen was. Clears and off screen buffers stay as they are.
+static
+bool _immersiveScreenRect(f32 _ulx, f32 _uly, f32 _lrx, f32 _lry, bool & _fullScreen)
+{
+	if (!gSPImmersiveActive() || gDP.colorImage.address == gDP.depthImageAddress ||
+		gDP.colorImage.width < VI.width * 98 / 100)
+		return false;
+	const f32 width = static_cast<f32>(gDP.colorImage.width);
+	const f32 height = static_cast<f32>(VI.height);
+	_fullScreen = _ulx <= 1.0f && _uly <= 1.0f && _lrx >= width - 2.0f && _lry >= height - 2.0f;
+	return true;
+}
+
 void GraphicsDrawer::drawRect(int _ulx, int _uly, int _lrx, int _lry)
 {
 	m_texrectDrawer.draw();
@@ -1147,6 +1170,24 @@ void GraphicsDrawer::drawRect(int _ulx, int _uly, int _lrx, int _lry)
 			m_rect[i].x *= scale;
 			m_rect[i].x += offsetx;
 		}
+	}
+
+	bool fullScreen = false;
+	if (_immersiveScreenRect(static_cast<f32>(_ulx), static_cast<f32>(_uly), static_cast<f32>(_lrx),
+			static_cast<f32>(_lry), fullScreen)) {
+		// Letterbox bars for cutscenes, as in Super Mario 64, would float in front of the player as
+		// two black strips. The whole view is the picture now, so they are left out.
+		const s32 width = static_cast<s32>(gDP.colorImage.width);
+		const s32 height = static_cast<s32>(VI.height);
+		const bool letterbox = !gSPImmersiveBackground() && _ulx <= 16 && _lrx >= width - 16 &&
+			(_uly <= 16 || _lry >= height - 16) && (_lry - _uly) < height / 4;
+		if (letterbox) {
+			gSP.changed |= CHANGED_GEOMETRYMODE | CHANGED_VIEWPORT;
+			dropRenderState();
+			return;
+		}
+		if (!fullScreen || gSPImmersiveBackground())
+			gSPImmersiveRect(m_rect, 4, fullScreen);
 	}
 
 	Context::DrawRectParameters rectParams;
@@ -1340,14 +1381,17 @@ void GraphicsDrawer::drawTexturedRect(const TexturedRectParams & _params)
 	DisplayWindow & wnd = dwnd();
 	TextureCache & cache = textureCache();
 	const bool bUseBilinear = gDP.otherMode.textureFilter != 0;
-	const bool bUseTexrectDrawer = m_bBGMode || ((config.graphics2D.enableNativeResTexrects != 0)
+	bool immersiveFullScreen = false;
+	const bool immersiveRect = _params.texrectCmd &&
+		_immersiveScreenRect(_params.ulx, _params.uly, _params.lrx, _params.lry, immersiveFullScreen);
+	const bool bUseTexrectDrawer = !immersiveRect && (m_bBGMode || ((config.graphics2D.enableNativeResTexrects != 0)
 		&& bUseBilinear
 		&& pCurrentCombiner->usesTexture()
 		&& (pCurrentBuffer == nullptr || !pCurrentBuffer->m_cfb)
 		&& (cache.current[0] != nullptr)
 		//		&& (cache.current[0] == nullptr || cache.current[0]->format == G_IM_FMT_RGBA || cache.current[0]->format == G_IM_FMT_CI)
 		&& ((cache.current[0]->frameBufferTexture == CachedTexture::fbNone && !cache.current[0]->bHDTexture))
-		&& (cache.current[1] == nullptr || (cache.current[1]->frameBufferTexture == CachedTexture::fbNone && !cache.current[1]->bHDTexture)));
+		&& (cache.current[1] == nullptr || (cache.current[1]->frameBufferTexture == CachedTexture::fbNone && !cache.current[1]->bHDTexture))));
 
 	const float Z = (gDP.otherMode.depthSource == G_ZS_PRIM) ? gDP.primDepth.z : 0.0f;
 	const float W = 1.0f;
@@ -1502,6 +1546,9 @@ void GraphicsDrawer::drawTexturedRect(const TexturedRectParams & _params)
 		if (m_texrectDrawer.addRect())
 			return;
 	}
+
+	if (immersiveRect)
+		gSPImmersiveRect(m_rect, 4, immersiveFullScreen);
 
 	_updateViewport(_params.pBuffer);
 	Context::DrawRectParameters rectParams;

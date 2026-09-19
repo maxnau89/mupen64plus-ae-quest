@@ -295,6 +295,12 @@ public class GamePrefs
     /** Stereo depth boost in percent, 0 is physical */
     public final int stereo3dDepthBoost;
 
+    /** Experimental immersive mode: head rotation turns the camera, the picture fills the view */
+    public final boolean stereo3dImmersive;
+
+    /** Rendered height per eye in immersive mode, the width is 4:3 */
+    public final int stereo3dImmersiveHeight;
+
     /** 64DD IDL path */
     public final String idlPath64Dd;
 
@@ -335,6 +341,7 @@ public class GamePrefs
     static final String STEREO_3D_CONVERGENCE = "stereo3dConvergence";
     static final String STEREO_3D_FOV = "stereo3dFov";
     static final String STEREO_3D_DEPTH_BOOST = "stereo3dDepthBoost";
+    public static final String STEREO_3D_IMMERSIVE = "stereo3dImmersive";
     static final String IDL_PATH_64DD = "idlPath64dd";
     static final String DISK_PATH_64DD = "diskPath64dd";
     static final String TRANSFER_PAK = "transferPak";
@@ -488,7 +495,7 @@ public class GamePrefs
         rspHleVideo = rspPluginLib.isHle();
         // Experimental stereoscopic 3D only exists in GLideN64, so it picks the plug-in
         final int stereoMode = getSafeInt( mPreferences, STEREO_3D_MODE, 0 );
-        videoPlugin = stereoMode != 0
+        videoPlugin = stereoMode != 0 || mPreferences.getBoolean( STEREO_3D_IMMERSIVE, false )
                 ? new Plugin( AppData.VideoPlugin.GLIDEN64.getPluginLib() )
                 : new Plugin( emulationProfile, "videoPlugin" );
         videoPluginLib = AppData.VideoPlugin.getPlugin(videoPlugin.name);
@@ -604,7 +611,11 @@ public class GamePrefs
 
         enable64DdSupport = mPreferences.getBoolean( SUPPORT_64DD, false );
 
-        stereo3dMode = getSafeInt( mPreferences, STEREO_3D_MODE, 0 );
+        stereo3dImmersive = mPreferences.getBoolean( STEREO_3D_IMMERSIVE, false );
+        stereo3dImmersiveHeight = Math.max( 480, Math.min( 2160,
+                getSafeInt( mPreferences, "stereo3dImmersiveHeight", 1440 ) ) );
+        // Immersive mode renders both eyes, whatever the eye setting says
+        stereo3dMode = stereo3dImmersive ? 3 : getSafeInt( mPreferences, STEREO_3D_MODE, 0 );
         stereo3dSeparation = mPreferences.getInt( STEREO_3D_SEPARATION, 30 );
         stereo3dConvergence = mPreferences.getInt( STEREO_3D_CONVERGENCE, 0 );
         stereo3dFov = mPreferences.getInt( STEREO_3D_FOV, 110 );

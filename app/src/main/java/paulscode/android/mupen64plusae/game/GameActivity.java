@@ -555,13 +555,14 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         mGameSurface.setShaderScaleFactor(mGlobalPrefs.shaderScaleFactor);
 
         if (QuestXr.isQuestDevice()) {
-            final int xrGameHeight = mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution)
+            final int xrGameHeight = getVideoRenderHeight()
                     * mGlobalPrefs.shaderScaleFactor;
             final int xrGameWidth = getVideoRenderWidth() * mGlobalPrefs.shaderScaleFactor;
             Log.i(TAG, "Stereo diagnostic: mode=" + mGamePrefs.stereo3dMode
                     + " separation=" + mGamePrefs.stereo3dSeparation
                     + " convergence=" + mGamePrefs.stereo3dConvergence
                     + " fov=" + mGamePrefs.stereo3dFov
+                    + " immersive=" + mGamePrefs.stereo3dImmersive
                     + " XR=" + xrGameWidth + "x" + xrGameHeight);
             mQuestTouchController = new QuestTouchController(mCoreFragment, this);
             if (QuestXr.create(this, mQuestTouchController,
@@ -577,6 +578,7 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
                 mQuestSpatialDock.setVisible(true);
                 // Experimental stereoscopic 3D puts both eyes into the game image, side by side
                 QuestXr.setStereoGame(mGamePrefs.stereo3dMode == 3);
+                QuestXr.setImmersiveGame(mGamePrefs.stereo3dImmersive);
                 mQuestN64Overlay = new QuestN64Overlay(QuestXr.getSurface(QuestXr.QUAD_CONTROLLER),
                         XR_CONTROLLER_WIDTH, XR_CONTROLLER_HEIGHT);
                 mQuestN64Overlay.update(new boolean[AbstractController.NUM_N64_BUTTONS], 0, 0);
@@ -751,11 +753,11 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
         {
             if (!mCoreFragment.IsInProgress()) {
                 Log.i(TAG, "Stereo diagnostic: core=" + getVideoRenderWidth() + "x"
-                        + mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution));
+                        + getVideoRenderHeight());
                 mCoreFragment.startCore(mGlobalPrefs, mGamePrefs, mRomGoodName, mRomDisplayName, mRomPath, mZipPath,
                         mRomMd5, mRomCrc, mRomHeaderName, mRomCountryCode, mRomArtPath, mDoRestart,
                         getVideoRenderWidth(),
-                        mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution),
+                        getVideoRenderHeight(),
                         mIsNetplayEnabled);
             }
 
@@ -909,10 +911,26 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
     }
 
     /** Stereo stores two full-resolution eye images side by side in the game render target. */
+    // Immersive mode spreads the picture over the whole field of view, so it needs far more pixels
+    // than a screen. The height per eye is a per game setting, the width is 4:3.
+    private boolean isXrImmersive()
+    {
+        return QuestXr.isQuestDevice() && mGamePrefs.stereo3dImmersive;
+    }
+
     private int getVideoRenderWidth()
     {
+        if (isXrImmersive()) {
+            return mGamePrefs.stereo3dImmersiveHeight * 4 / 3 * 2;
+        }
         final int width = mDisplayResolutionData.getResolutionWidth(mGamePrefs.verticalRenderResolution);
         return QuestXr.isQuestDevice() && mGamePrefs.stereo3dMode == 3 ? width * 2 : width;
+    }
+
+    private int getVideoRenderHeight()
+    {
+        return isXrImmersive() ? mGamePrefs.stereo3dImmersiveHeight
+                : mDisplayResolutionData.getResolutionHeight(mGamePrefs.verticalRenderResolution);
     }
 
     private String getXrScreenPrefPrefix()
@@ -959,8 +977,9 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
 
         // The dock hangs under the game screen, the 2D controller below that
         final float dockHeight = XR_DOCK_SIZE * XR_DOCK_HEIGHT / XR_DOCK_WIDTH;
+        // In immersive mode the game fills the view, so the dock only comes up with the menu
         final boolean dockVisible = mQuestSpatialDock != null && mQuestSpatialDock.isVisible()
-                && !mXrAdjusting && !isXrNetplayMenuOpen();
+                && !mXrAdjusting && !isXrNetplayMenuOpen() && (menuOpen || !isXrImmersive());
         final float dockY = -(screenHeight + dockHeight) / 2.0f - 0.04f;
         QuestXr.setQuad(QuestXr.QUAD_DOCK, dockVisible, QuestXr.ATTACH_GAME, 0.0f, dockY, 0.06f, 0.0f,
                 XR_DOCK_SIZE, true, 0.0f, false);

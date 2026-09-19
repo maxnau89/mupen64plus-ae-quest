@@ -860,7 +860,11 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
 
     private String getStereoSummary(GalleryItem item)
     {
-        final String mode = getGamePreferences(item).getString(GamePrefs.STEREO_3D_MODE, STEREO_OFF);
+        final SharedPreferences prefs = getGamePreferences(item);
+        if (prefs.getBoolean(GamePrefs.STEREO_3D_IMMERSIVE, false)) {
+            return getString(R.string.quest_game_stereo_immersive);
+        }
+        final String mode = prefs.getString(GamePrefs.STEREO_3D_MODE, STEREO_OFF);
         if (STEREO_OFF.equals(mode)) {
             return getString(R.string.quest_game_stereo_off);
         }
@@ -870,9 +874,19 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
 
     private void toggleStereo(GalleryItem item)
     {
+        // Off, then 3D on a screen, then immersive, then off again
         final SharedPreferences prefs = getGamePreferences(item);
+        final boolean immersive = prefs.getBoolean(GamePrefs.STEREO_3D_IMMERSIVE, false);
         final boolean on = !STEREO_OFF.equals(prefs.getString(GamePrefs.STEREO_3D_MODE, STEREO_OFF));
-        prefs.edit().putString(GamePrefs.STEREO_3D_MODE, on ? STEREO_OFF : STEREO_BOTH_EYES).apply();
+        if (immersive) {
+            prefs.edit().putBoolean(GamePrefs.STEREO_3D_IMMERSIVE, false)
+                    .putString(GamePrefs.STEREO_3D_MODE, STEREO_OFF).apply();
+        } else if (on) {
+            prefs.edit().putBoolean(GamePrefs.STEREO_3D_IMMERSIVE, true)
+                    .putString(GamePrefs.STEREO_3D_MODE, STEREO_BOTH_EYES).apply();
+        } else {
+            prefs.edit().putString(GamePrefs.STEREO_3D_MODE, STEREO_BOTH_EYES).apply();
+        }
         if (mQuestStereoRow != null) {
             ((TextView) mQuestStereoRow.findViewById(R.id.rowSummary)).setText(getStereoSummary(item));
         }

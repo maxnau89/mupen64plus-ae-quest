@@ -238,6 +238,8 @@ void RSP_ProcessDList()
 	}
 	if (haveFirstPassDmem)
 		memcpy(DMEM, firstPassDmem, sizeof(firstPassDmem));
+	if (FrameBuffer * drawn = frameBufferList().getCurrent())
+		gSPImmersiveFrameDrawn(drawn->m_startAddress);
 	gSPSetStereoEye(config.stereo.mode);
 
 	if (RSP.infloop && REG.SP_STATUS) {

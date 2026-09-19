@@ -1392,4 +1392,14 @@
         <item>2</item>
         <item>3</item>
     </string-array>
+    <string-array name="stereo3dImmersiveHeight_entries" translatable="false">
+        <item>1440 × 1080</item>
+        <item>1920 × 1440</item>
+        <item>2400 × 1800</item>
+    </string-array>
+    <string-array name="stereo3dImmersiveHeight_values" translatable="false">
+        <item>1080</item>
+        <item>1440</item>
+        <item>1800</item>
+    </string-array>
 </resources>

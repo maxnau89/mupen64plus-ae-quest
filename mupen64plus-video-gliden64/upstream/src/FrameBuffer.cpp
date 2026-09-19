@@ -4,6 +4,7 @@
 #include <vector>
 #include "FrameBuffer.h"
 #include "StereoFrames.h"
+#include "gSP.h"
 #include "DepthBuffer.h"
 #include "N64.h"
 #include "RSP.h"
@@ -1586,6 +1587,14 @@ void FrameBufferList::renderBuffer()
 						vOffset + static_cast<s32>(dstY0*dstScaleY),
 						hOffset + dstX1,
 						vOffset + static_cast<s32>(dstY1*dstScaleY) };
+	if (config.stereo.immersive != 0 && pNextBuffer == nullptr) {
+		// Experimental immersive mode: the picture must fill exactly the field of view it was
+		// rendered for, without the border a TV would show
+		dstCoord[0] = hOffset;
+		dstCoord[1] = vOffset;
+		dstCoord[2] = hOffset + static_cast<s32>(m_overscan.getDrawingWidth());
+		dstCoord[3] = vOffset + static_cast<s32>(vFullHeight * dstScaleY);
+	}
 
 	ObjectHandle readBuffer;
 
@@ -1723,6 +1732,8 @@ void FrameBufferList::renderBuffer()
 		}
 	}
 
+	// Experimental immersive mode: tell the headset which head pose this picture was drawn for
+	gSPImmersivePresent(pBuffer->m_startAddress);
 	wnd.swapBuffers();
 	if (m_pCurrent != nullptr) {
 		gfxContext.bindFramebuffer(bufferTarget::DRAW_FRAMEBUFFER, m_pCurrent->m_FBO);

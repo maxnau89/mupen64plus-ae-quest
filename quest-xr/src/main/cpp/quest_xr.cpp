@@ -23,6 +23,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <ctime>
 #include <mutex>
 #include <thread>
 #include <unistd.h>
@@ -133,6 +134,18 @@ struct Quad {
     QuadSettings settings;  // guarded by XrState::quadMutex
 };
 
+// A head pose handed to the emulator for one frame, and the picture shown for it
+constexpr int kImmersivePoses = 32;
+struct ImmersivePose {
+    int id = 0;
+    XrPosef eyes[2] = {};
+    float tangents[2] = {1.0f, 1.0f};
+};
+struct ImmersivePresented {
+    int64_t time = 0;  // CLOCK_MONOTONIC nanoseconds, just before the emulator queued the picture
+    int id = 0;
+};
+
 struct PassthroughFns {
     XrResult (*create)(XrSession, const XrPassthroughCreateInfoFB*, XrPassthroughFB*) = nullptr;
     XrResult (*destroy)(XrPassthroughFB) = nullptr;
@@ -170,6 +183,22 @@ struct XrState {
 
     // The game quad holds two eye views side by side, drawn by the emulator's stereo mode
     std::atomic<bool> stereoGame{false};
+
+    // Immersive mode: the emulator renders each frame for a head pose it asks for, and the picture
+    // goes out as a projection layer with that pose instead of on the screen quad
+    std::atomic<bool> immersiveGame{false};
+    std::mutex immersiveMutex;
+    bool immersiveHaveViews = false;
+    XrPosef immersiveEyes[2] = {};          // latest eye poses
+    float immersiveTan[2] = {1.0f, 1.0f};   // rendered half angle tangents, x and y
+    bool immersiveReferenceSet = false;
+    float immersiveReferenceYaw = 0.0f;     // where the game's camera looks
+    int immersiveNextId = 0;
+    ImmersivePose immersivePoses[kImmersivePoses];
+    ImmersivePresented immersivePresented[kImmersivePoses];
+    int immersivePresentedNext = 0;
+    ImmersivePose immersiveShown;           // frame thread only: the pose of the picture on screen
+    jmethodID getTimestamp = nullptr;
 
     // Pointer ray at the menu quad, only while pointing is enabled
     std::atomic<bool> pointerEnabled{false};
@@ -649,6 +678,7 @@ void main() {
     xr.attachToGLContext = env->GetMethodID(textureClass, "attachToGLContext", "(I)V");
     xr.detachFromGLContext = env->GetMethodID(textureClass, "detachFromGLContext", "()V");
     xr.updateTexImage = env->GetMethodID(textureClass, "updateTexImage", "()V");
+    xr.getTimestamp = env->GetMethodID(textureClass, "getTimestamp", "()J");
     xr.getTransformMatrix = env->GetMethodID(textureClass, "getTransformMatrix", "([F)V");
     env->DeleteLocalRef(textureClass);
     if (clearException(env, "SurfaceTexture lookup")) {
@@ -687,6 +717,8 @@ void destroyCopyGl(JNIEnv* env, XrState& xr) {
     }
 }
 
+void findShownPose(XrState& xr, int64_t timestamp);
+
 // Copies the latest source frame into the next swapchain image of the quad.
 void copyQuad(JNIEnv* env, XrState& xr, Quad& quad, const QuadSettings& settings) {
     if (quad.sourceTexture == nullptr || quad.swapchain == XR_NULL_HANDLE) {
@@ -708,6 +740,10 @@ void copyQuad(JNIEnv* env, XrState& xr, Quad& quad, const QuadSettings& settings
     env->CallVoidMethod(quad.sourceTexture, xr.getTransformMatrix, static_cast<jfloatArray>(xr.transformArray));
     jfloat matrix[16];
     env->GetFloatArrayRegion(static_cast<jfloatArray>(xr.transformArray), 0, 16, matrix);
+    const bool immersive = &quad == &xr.quads[QUAD_GAME] && xr.immersiveGame.load();
+    if (immersive) {
+        findShownPose(xr, env->CallLongMethod(quad.sourceTexture, xr.getTimestamp));
+    }
 
     uint32_t index = 0;
     XrSwapchainImageAcquireInfo acquireInfo{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
@@ -730,7 +766,7 @@ void copyQuad(JNIEnv* env, XrState& xr, Quad& quad, const QuadSettings& settings
     glUniformMatrix4fv(xr.texMatrixLocation, 1, GL_FALSE, matrix);
     glUniform1f(xr.decodeSrgbLocation, xr.decodeSrgb ? 1.0f : 0.0f);
     glUniform1f(xr.opaqueLocation, settings.opaqueSource ? 1.0f : 0.0f);
-    if (settings.cornerRadius > 0.0f && settings.width > 0.0f) {
+    if (settings.cornerRadius > 0.0f && settings.width > 0.0f && !immersive) {
         const bool stereoGame = &quad == &xr.quads[QUAD_GAME] && xr.stereoGame.load();
         const float contentWidth = stereoGame ? static_cast<float>(quad.width) * 0.5f
                                               : static_cast<float>(quad.width);
@@ -752,6 +788,77 @@ void copyQuad(JNIEnv* env, XrState& xr, Quad& quad, const QuadSettings& settings
     if (check(xrReleaseSwapchainImage(quad.swapchain, &releaseInfo), "xrReleaseSwapchainImage")) {
         quad.hasImage = true;
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Immersive mode
+
+XrQuaternionf multiply(const XrQuaternionf& a, const XrQuaternionf& b) {
+    return {a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+            a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+            a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+            a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
+}
+
+// Yaw of a view's forward direction, as a rotation around +Y from -Z
+float forwardYaw(const XrQuaternionf& orientation) {
+    const XrVector3f forward = questxr::rotateVector(orientation, {0.0f, 0.0f, -1.0f});
+    return std::atan2(-forward.x, -forward.z);
+}
+
+// Pairs the picture the SurfaceTexture latched with the pose it was rendered for. The emulator
+// reports each picture just before queueing it, and the queue stamps it with the monotonic clock.
+void findShownPose(XrState& xr, int64_t timestamp) {
+    std::lock_guard<std::mutex> lock(xr.immersiveMutex);
+    int id = 0;
+    int64_t best = 0;
+    for (const ImmersivePresented& presented : xr.immersivePresented) {
+        if (presented.id > 0 && presented.time <= timestamp && presented.time > best) {
+            best = presented.time;
+            id = presented.id;
+        }
+    }
+    if (id <= 0 || id == xr.immersiveShown.id) {
+        return;
+    }
+    const ImmersivePose& pose = xr.immersivePoses[id % kImmersivePoses];
+    if (pose.id == id) {
+        xr.immersiveShown = pose;
+    }
+}
+
+// Keeps the latest eye poses and field of view for the emulator's next frame
+void updateImmersiveViews(XrState& xr, XrTime time) {
+    XrViewLocateInfo locateInfo{XR_TYPE_VIEW_LOCATE_INFO};
+    locateInfo.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+    locateInfo.displayTime = time;
+    locateInfo.space = xr.space;
+    XrViewState viewState{XR_TYPE_VIEW_STATE};
+    XrView views[2] = {{XR_TYPE_VIEW}, {XR_TYPE_VIEW}};
+    uint32_t viewCount = 0;
+    if (XR_FAILED(xrLocateViews(xr.session, &locateInfo, &viewState, 2, &viewCount, views)) || viewCount != 2 ||
+        (viewState.viewStateFlags & XR_VIEW_STATE_ORIENTATION_VALID_BIT) == 0) {
+        return;
+    }
+    // One symmetric frustum covering both eyes, a few degrees wider so turning the head between
+    // emulated frames does not show the edge right away
+    constexpr float kMargin = 5.0f * 3.14159265f / 180.0f;
+    float halfX = 0.0f;
+    float halfY = 0.0f;
+    for (const XrView& view : views) {
+        halfX = std::max(halfX, std::max(-view.fov.angleLeft, view.fov.angleRight));
+        halfY = std::max(halfY, std::max(view.fov.angleUp, -view.fov.angleDown));
+    }
+    std::lock_guard<std::mutex> lock(xr.immersiveMutex);
+    xr.immersiveEyes[0] = views[0].pose;
+    xr.immersiveEyes[1] = views[1].pose;
+    xr.immersiveTan[0] = std::tan(std::min(halfX + kMargin, 1.4f));
+    xr.immersiveTan[1] = std::tan(std::min(halfY + kMargin, 1.4f));
+    if (!xr.immersiveReferenceSet) {
+        xr.immersiveReferenceYaw = forwardYaw(views[0].pose.orientation);
+        xr.immersiveReferenceSet = true;
+    }
+    xr.immersiveHaveViews = true;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -886,6 +993,11 @@ void updateGrab(JNIEnv* env, XrState& xr, XrTime time, XrDuration period, const 
 void updateRecenter(JNIEnv* env, XrState& xr, const XrPosef* head) {
     if (head == nullptr || !xr.recenterRequested.exchange(false)) {
         return;
+    }
+    {
+        // Immersive mode: the game's camera looks where the head looks now
+        std::lock_guard<std::mutex> lock(xr.immersiveMutex);
+        xr.immersiveReferenceSet = false;
     }
     XrVector3f forward = questxr::rotateVector(head->orientation, {0.0f, 0.0f, -1.0f});
     forward.y = 0.0f;
@@ -1305,6 +1417,9 @@ void renderFrame(XrState& xr, JNIEnv* env) {
     const XrPosef* head = locate(xr, xr.viewSpace, time, headPose) ? &headPose : nullptr;
     updateGrab(env, xr, time, frameState.predictedDisplayPeriod, hands, head);
     updateRecenter(env, xr, head);
+    if (xr.immersiveGame.load()) {
+        updateImmersiveViews(xr, time);
+    }
 
     QuadSettings settings[QUAD_COUNT];
     {
@@ -1346,6 +1461,8 @@ void renderFrame(XrState& xr, JNIEnv* env) {
     XrCompositionLayerQuad quadLayers[QUAD_COUNT + 1];  // the game quad needs one per eye in stereo
     XrCompositionLayerProjection projectionLayer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
     XrCompositionLayerProjectionView projectionViews[2];
+    XrCompositionLayerProjection gameLayer{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
+    XrCompositionLayerProjectionView gameViews[2];
     const XrCompositionLayerBaseHeader* layers[QUAD_COUNT + 3];
     uint32_t layerCount = 0;
 
@@ -1384,6 +1501,29 @@ void renderFrame(XrState& xr, JNIEnv* env) {
             }
             layer.size = {settings[i].width,
                           settings[i].width * static_cast<float>(quad.height) / static_cast<float>(quad.width)};
+
+            // Immersive mode: each half is what one eye sees from the pose the frame was rendered
+            // for. The compositor turns it to the current pose, so the world stays put between
+            // emulated frames.
+            if (i == QUAD_GAME && xr.immersiveGame.load() && xr.immersiveShown.id > 0 && quad.width >= 2) {
+                const ImmersivePose& shown = xr.immersiveShown;
+                const int32_t halfWidth = quad.width / 2;
+                const XrFovf fov = {-std::atan(shown.tangents[0]), std::atan(shown.tangents[0]),
+                                    std::atan(shown.tangents[1]), -std::atan(shown.tangents[1])};
+                for (int eye = 0; eye < 2; ++eye) {
+                    gameViews[eye] = {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW};
+                    gameViews[eye].pose = {shown.eyes[0].orientation, shown.eyes[eye].position};
+                    gameViews[eye].fov = fov;
+                    gameViews[eye].subImage.swapchain = quad.swapchain;
+                    gameViews[eye].subImage.imageRect = {{eye * halfWidth, 0}, {halfWidth, quad.height}};
+                    gameViews[eye].subImage.imageArrayIndex = 0;
+                }
+                gameLayer.space = xr.space;
+                gameLayer.viewCount = 2;
+                gameLayer.views = gameViews;
+                layers[layerCount++] = reinterpret_cast<XrCompositionLayerBaseHeader*>(&gameLayer);
+                continue;
+            }
 
             // In stereo the emulator draws both eyes into one image, side by side. Each eye gets the
             // half that belongs to it, stretched back over the same quad.
@@ -1780,6 +1920,72 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetStereoGame(JNIEnv*
     if (gXr != nullptr) {
         gXr->stereoGame = enabled;
     }
+}
+
+// Immersive mode: head rotation turns the game's camera, the picture fills the view
+JNIEXPORT void JNICALL
+Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetImmersiveGame(JNIEnv*, jclass, jboolean enabled) {
+    if (gXr != nullptr) {
+        {
+            std::lock_guard<std::mutex> lock(gXr->immersiveMutex);
+            gXr->immersiveReferenceSet = false;
+            gXr->immersiveHaveViews = false;
+        }
+        gXr->immersiveGame = enabled;
+    }
+}
+
+// Called by the emulator's video plug-in, which finds these with dlsym. Returns the id of the pose
+// to render the next frame with, or 0 when immersive mode is off. rotation maps a direction seen by
+// the game's camera to the head, row-major; tangents are the rendered half angles, x and y.
+__attribute__((visibility("default"))) int questxr_immersive_pose(float rotation[9], float tangents[2]) {
+    XrState* xr = gXr;
+    if (xr == nullptr || !xr->immersiveGame.load()) {
+        return 0;
+    }
+    std::lock_guard<std::mutex> lock(xr->immersiveMutex);
+    if (!xr->immersiveHaveViews || !xr->immersiveReferenceSet) {
+        return 0;
+    }
+    const float half = -0.5f * xr->immersiveReferenceYaw;
+    const XrQuaternionf reference = {0.0f, std::sin(half), 0.0f, std::cos(half)};
+    const XrQuaternionf q = multiply(reference, xr->immersiveEyes[0].orientation);
+    // R maps the head's directions to the reference, the transpose goes the other way
+    const float r[3][3] = {
+        {1 - 2 * (q.y * q.y + q.z * q.z), 2 * (q.x * q.y - q.z * q.w), 2 * (q.x * q.z + q.y * q.w)},
+        {2 * (q.x * q.y + q.z * q.w), 1 - 2 * (q.x * q.x + q.z * q.z), 2 * (q.y * q.z - q.x * q.w)},
+        {2 * (q.x * q.z - q.y * q.w), 2 * (q.y * q.z + q.x * q.w), 1 - 2 * (q.x * q.x + q.y * q.y)}};
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            rotation[row * 3 + column] = r[column][row];
+        }
+    }
+    tangents[0] = xr->immersiveTan[0];
+    tangents[1] = xr->immersiveTan[1];
+
+    const int id = ++xr->immersiveNextId;
+    ImmersivePose& pose = xr->immersivePoses[id % kImmersivePoses];
+    pose.id = id;
+    pose.eyes[0] = xr->immersiveEyes[0];
+    pose.eyes[1] = xr->immersiveEyes[1];
+    pose.tangents[0] = tangents[0];
+    pose.tangents[1] = tangents[1];
+    return id;
+}
+
+// Called by the video plug-in right before it queues the picture drawn for the pose
+__attribute__((visibility("default"))) void questxr_immersive_present(int id) {
+    XrState* xr = gXr;
+    if (xr == nullptr || id <= 0) {
+        return;
+    }
+    timespec now{};
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    std::lock_guard<std::mutex> lock(xr->immersiveMutex);
+    ImmersivePresented& presented = xr->immersivePresented[xr->immersivePresentedNext];
+    presented.time = static_cast<int64_t>(now.tv_sec) * 1000000000LL + now.tv_nsec;
+    presented.id = id;
+    xr->immersivePresentedNext = (xr->immersivePresentedNext + 1) % kImmersivePoses;
 }
 
 // Must be called before nativeStart. mesh: direct buffer with the converted model, texture: ARGB_8888 bitmap
