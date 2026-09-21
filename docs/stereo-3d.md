@@ -7,11 +7,15 @@ result is genuine depth, not a flat picture on a big screen.
 This does the same for the N64. **It works**, as an experimental per ROM setting. This note is both
 the design record and the handover: what is built, what is verified, and what is left.
 
+On top of that sits **immersive mode**, which goes one step further: the screen disappears, the game
+is rendered with the headset's own field of view, and turning your head turns the camera. It is
+described in its own section below.
+
 ## Status
 
 Working in the Quest headset at full per-eye resolution (640x480 per eye) with Super Mario 64,
 Star Wars Episode I: Racer, Mario Kart 64 and Pokémon Stadium. It is switched on per game from the
-game page and stays marked experimental.
+game page and stays marked experimental. The game page cycles off, 3D on a screen, and immersive.
 
 The first headset tests found two classes of problems, both fixed:
 
@@ -94,9 +98,77 @@ is an overlay and sits on the screen plane. The optional depth boost raises conv
 exponent between 1 and 0.3, which spreads deep scenes such as a racing track that would otherwise
 sit almost at infinity.
 
+## Immersive mode
+
+A game on a screen two metres away covers about 53 degrees. The game itself was drawn for a much
+wider view — Star Wars Episode I: Racer's camera sees 100 degrees — so the picture was squeezed into
+a third of the angle it was made for. Immersive mode renders each frame for the head pose the
+headset reports, with the headset's field of view, and submits it as a projection layer with that
+pose. The compositor then holds the world still between emulated frames, which is what makes 20 to
+30 frames per second bearable while the head keeps moving.
+
+Everything happens in clip space, because on the N64 the camera may sit in the projection or in the
+modelview matrix, and some microcodes install a finished matrix of their own. For a perspective
+projection, clip space already is the camera's view space up to the scales `sx`, `sy` and the depth
+mapping `z = -A*w + B`, all three of which can be read back out of the matrix. `gSPApplyStereo()`
+right-multiplies the matrix with the turn, so the whole mode costs one matrix multiply per matrix.
+
+**What the head sees.** `quest_xr.cpp` exports two functions that GLideN64 finds with `dlsym`:
+`questxr_immersive_pose()` hands out the current head rotation relative to where the player faced,
+the rendered half angles, and an id; `questxr_immersive_present()` reports which id a finished
+picture belongs to. The picture reaches XR through a SurfaceTexture, whose timestamp is matched
+against the reported ids, so each image is submitted with the pose it was drawn for. *Reset screen*
+in the VR menu sets the forward direction anew.
+
+**Things that are not in the scene.** A HUD, a sky and a menu are flat, and the game drew them for
+its own screen:
+
+- **Backgrounds**, anything flat drawn before the first 3D of a frame, are placed at infinity at
+  their true angular size so they line up with the horizon, and whatever reaches the edge of the
+  game's screen is pulled outwards, smearing the last texels instead of leaving the view empty. N64
+  skies only cover the game's own narrow view; there is no more sky to be had.
+- **Overlays and screen rectangles** are placed where the game's screen was, straight ahead.
+- **Letterbox bars**, which Super Mario 64 draws in cut scenes, are left out: the whole view is the
+  picture now, so two black strips would just float in front of the player.
+
+**Cut scenes go back on the screen.** A camera that sees less than 30 degrees to the side cannot
+fill the headset's view; its picture would sit in the middle of a large empty surround. The same
+holds for a frame with nothing in perspective at all, such as a title screen or a menu. Those are
+submitted as the ordinary screen quad instead, in stereo, and the mode switches back when the game
+does. Going to the screen takes three frames, coming back twenty, because a cut scene shown in the
+full view for half a second is what one notices.
+
+**Telling the camera from the objects.** Microcodes that install their own matrix hand over one per
+object, and objects can be scaled unevenly, like a stretched engine glow. The scale that most
+matrices of a frame agree on is taken to be the camera.
+
+**The settings.** All per game, all only in immersive mode:
+
+| Setting | Meaning |
+|---|---|
+| Immersive | Off, or on. Forces both eyes and the GLideN64 plug-in |
+| Immersive resolution per eye | 1440x1080, 1920x1440 or 2400x1800. The view is spread over twice the angle a screen covers, so it needs the pixels |
+| Immersive world size | Shows the scene at a smaller angle, as if the camera had a narrower view. Head turns still match. Below 100% the picture no longer fills the view |
+| Immersive HUD size | How wide the HUD is spread. At 100% it takes as much of the view as the game's own camera, which can push it into the corners of the eye |
+| Immersive camera distance | Moves the camera back along its own axis, in percent of the nearest depth of the scene. Both depth planes move with it |
+| Sharper small textures | xBRZ for tiny HUD fonts, which fall apart when spread over the whole view |
+
+Star Wars Episode I: Racer ships with world 70%, HUD 65%, distance 150%, 1440x1080 and xBRZ, found
+by testing in the headset.
+
+**What it cannot do.** Games draw what their own camera sees. Look to the side and the world may
+simply end there, and objects the game culled will not appear however wide the view is. A sky is a
+flat picture and stays one. Effects a game positions in screen space itself, such as Racer's engine
+glow, carry no depth that could be followed when the camera moves back, so they sit still for the
+two seconds the camera distance needs to settle after a scene change.
+
 ## Diagnostics
 
-The plugin logs to the `GLideN64` tag. `Stereo pairs` counts shown images without a pair,
+The diagnostics are compiled out: `STEREO_DIAGNOSTICS` in
+[`Config.h`](../mupen64plus-video-gliden64/upstream/src/Config.h) turns them back on. One of them
+reads the frame buffer back, which is why they are not merely quiet by default.
+
+With them on, the plugin logs to the `GLideN64` tag. `Stereo pairs` counts shown images without a pair,
 `Stereo convergence` gives the automatic convergence with the 10th, 50th and 90th percentile of w,
 `Stereo eyes` the mean x/w per eye, and `Stereo output` how many channels of the middle row differ
 between the two halves of what goes on screen. When something looks flat, check these before
@@ -145,8 +217,10 @@ and effects, then raise convergence from zero until the intended subject sits on
 plane. Do not compensate for a missing layer or a one-eye rendering bug with convergence: that
 creates binocular rivalry and cannot be made comfortable with numeric tuning.
 
-Config options reaching the plugin: `StereoMode`, `StereoSeparation`, `StereoConvergence`, and
-`StereoFovScale` in the `Video-GLideN64` section, written by `NativeConfigFiles`.
+Config options reaching the plugin, all in the `Video-GLideN64` section and written by
+`NativeConfigFiles`: `StereoMode`, `StereoSeparation`, `StereoConvergence`, `StereoFovScale`,
+`StereoDepthBoost`, `StereoImmersive`, `StereoImmersiveDistance`, `StereoImmersiveWorldScale` and
+`StereoImmersiveHudScale`.
 
 ## What is left
 
@@ -155,24 +229,31 @@ Config options reaching the plugin: `StereoMode`, `StereoSeparation`, `StereoCon
    writes still need an audit; replaying a display list is not inherently side-effect free.
 2. **Measure the cost.** Two walks double the graphics work and the vertex transform runs on the
    CPU. Untested.
-3. **Match physical angular FoV.** The default 2 m wide screen at 2 m
-   distance covers about 53 degrees horizontally. A 2.31 m screen at that distance covers about 60
-   degrees. Tune the physical screen first; changing an N64 projection can expose culled geometry
-   and does not automatically fix skyboxes or HUD layouts.
-4. **Try more games.** Four work so far. Games that lean on framebuffer effects, or write
-   back to RDRAM mid-frame, may not take a second walk so quietly.
-5. **`ZSortBOSS` is not hooked.** It can store the combined matrix back to RDRAM, and a sheared
+3. **Try more games in immersive mode.** Super Mario 64 and Star Wars Episode I: Racer were tuned
+   in the headset. Everything else is untested. Games that lean on framebuffer effects, or write
+   back to RDRAM mid-frame, may not take a second walk so quietly either.
+4. **Screen space effects and a moved camera.** A game that positions effects in screen space
+   itself, as Racer does with its engine glow, gives them no depth to follow. Racer leaves the depth
+   of those rectangles at zero, and deriving one from it reads as "right in front of the camera",
+   which threw them about. Assuming the near edge of the scene would suit the player's own vehicle
+   and overshoot for everything further away.
+5. **Rogue Squadron is blurry in immersive mode.** Only there, and at every resolution setting; the
+   camera values in the log look sound. Somewhere GLideN64 falls back to a native resolution buffer
+   for that game. Unsolved.
+6. **`ZSortBOSS` is not hooked.** It can store the combined matrix back to RDRAM, and a sheared
    matrix written into the game's own memory would corrupt its state. It needs the unsheared matrix
    kept alongside first.
-6. **Per game defaults.** Good separation, FoV and depth boost values differ wildly. A small table keyed
-   by ROM header name, like GLideN64's own `GLideN64.custom.ini`, would spare everyone the tuning.
+7. **Per game defaults from a table.** Good separation, world size and HUD size values differ
+   wildly. Star Wars Episode I: Racer has its own in `GamePrefs`, matched by name; a table keyed by
+   ROM header name, like GLideN64's own `GLideN64.custom.ini`, would scale better.
 
 ## Microcodes that bring their own matrix
 
 Most games go through `_gSPCombineMatrices()`, but a few compute the combined matrix themselves and
 install it directly, which bypasses the shear. Those need `gSPApplyStereo()` called by hand:
 
-- `F5Indi_Naboo` — Star Wars Episode I Racer, Battle for Naboo. **Hooked.**
+- `F5Indi_Naboo` — Indiana Jones, Battle for Naboo. **Hooked.** Not Racer: that one runs on plain
+  `F3DEX2` and installs its matrices through `gSPForceMatrix()`, which cost an afternoon to find out.
 - `ZSort` — World Driver Championship and friends. **Hooked.**
 - `ZSortBOSS` — **not hooked**, see above.
 
@@ -186,12 +267,14 @@ If a game shows no effect at all, check its microcode first.
 | `mupen64plus-video-gliden64/upstream/src/RSP.cpp` | `_runDisplayList()` split out, walked once per eye |
 | `mupen64plus-video-gliden64/upstream/src/StereoFrames.cpp/.h` | keeps the left eye between walks |
 | `mupen64plus-video-gliden64/upstream/src/FrameBuffer.cpp` | side by side output in `renderBuffer()` |
-| `mupen64plus-video-gliden64/upstream/src/Config.cpp/.h`, `mupenplus/Config_mupenplus.cpp` | the five config options |
-| `quest-xr/src/main/cpp/quest_xr.cpp` | one quad per eye, `nativeSetStereoGame` |
-| `app/.../game/xr/QuestXr.java` | `setStereoGame()` |
+| `mupen64plus-video-gliden64/upstream/src/Config.cpp/.h`, `mupenplus/Config_mupenplus.cpp` | the config options and `STEREO_DIAGNOSTICS` |
+| `mupen64plus-video-gliden64/upstream/src/GraphicsDrawer.cpp` | screen rectangles and triangles placed for immersive mode |
+| `quest-xr/src/main/cpp/quest_xr.cpp` | one quad per eye, the projection layer and the head pose for immersive mode |
+| `app/.../game/xr/QuestXr.java` | `setStereoGame()`, `setImmersiveGame()` |
+| `app/.../game/GameSurface.java` | photos keep one eye |
 | `app/.../game/GameActivity.java` | turns it on for the ROM |
-| `app/.../persistent/GamePrefs.java` | the five settings, forces GLideN64 |
-| `app/.../GalleryActivity.java` | the 3D switch on the game page |
+| `app/.../persistent/GamePrefs.java` | the settings, the Racer defaults, forces GLideN64 |
+| `app/.../GalleryActivity.java` | the 3D switch on the game page, off / 3D / immersive |
 | `app/.../util/Plugin.java` | constructor for a plug-in the app picks itself |
 | `app/.../jni/NativeConfigFiles.java` | writes the options into mupen64plus.cfg |
 | `app/src/main/res/xml/preferences_game.xml` | the settings screen |

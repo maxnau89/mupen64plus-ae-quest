@@ -42,6 +42,12 @@ shown as a flat overlay under the screen, or turned off.
 
 ![The 3D controller held up in front of the game](docs/screenshots/vr/controller-in-hands.jpg)
 
+**Real 3D, and a mode that puts you inside the game.** N64 games were drawn for one eye on a
+television. This fork renders them twice, once per eye, so they gain genuine depth — and in
+**immersive mode** the screen disappears: the game is rendered with the headset's field of view, and
+turning your head turns the camera. Both are experimental, switched on per game from the game page,
+and explained in [the note on stereoscopic 3D](docs/stereo-3d.md).
+
 **A dock under the screen and a menu beside it.** Point at them with a controller, the trigger
 clicks. Save, load, screenshot, menu and exit are always one click away, and opening the menu no
 longer covers the game.
@@ -149,10 +155,12 @@ devices that are not a Quest.
 
 ## Ideas
 
-[Stereoscopic 3D](docs/stereo-3d.md) — giving N64 games a per-eye view they never had, the way
-Dolphin VR does for GameCube and Wii. Experimental and switched on per game from the game page;
-working in the headset with Super Mario 64, Star Wars Episode I: Racer, Mario Kart 64 and Pokémon
-Stadium. The note explains how it works and what is left.
+**More games in 3D and immersive mode.** Every game brings its own quirks, and each one that works
+was made to work by hand. [The note](docs/stereo-3d.md) lists what is known to be missing.
+
+**Per game defaults from a table.** Good values for eye separation, world size and HUD size differ
+wildly between games. Star Wars Episode I: Racer already ships with its own, the way GLideN64 keeps
+per game settings in its `GLideN64.custom.ini`.
 
 ## Credits
 
