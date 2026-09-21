@@ -1193,7 +1193,10 @@ void F5INDI_TexrectGen()
 #ifdef F5INDI_PARTICLE_OPT
 			F5INDI_AddParticle(ulx, uly, lrx, lry, S, T, dsdx, dtdy);
 #else
+			// A glow or a spark in the world, not a HUD element
+			gSPImmersiveWorldSprite(true);
 			gDPTextureRectangle(ulx, uly, lrx, lry, 0, S, T, dsdx, dtdy, false);
+			gSPImmersiveWorldSprite(false);
 #endif
 		}
 		vtxAddr += 0x100;
@@ -1315,7 +1318,9 @@ void F5Naboo_TexrectGen()
 		                _SHIFTR(fogColor, 0, 8));	// a
 	}
 
+	gSPImmersiveWorldSprite(true);
 	gDPTextureRectangle(ulx, uly, lrx, lry, gSP.texture.tile, (s16)S, (s16)T, dsdx, dtdy, flip);
+	gSPImmersiveWorldSprite(false);
 }
 
 static

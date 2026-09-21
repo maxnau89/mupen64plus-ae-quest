@@ -144,6 +144,8 @@ void Config::resetToDefaults()
 	stereo.depthBoost = 0.0f;
 	stereo.immersive = 0;
 	stereo.immersiveDistance = 0.0f;
+	stereo.immersiveWorldScale = 1.0f;
+	stereo.immersiveHudScale = 1.0f;
 
 	onScreenDisplay.vis = 0;
 	onScreenDisplay.fps = 0;

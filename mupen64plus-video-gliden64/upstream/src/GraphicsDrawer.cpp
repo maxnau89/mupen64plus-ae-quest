@@ -905,6 +905,9 @@ void GraphicsDrawer::drawScreenSpaceTriangle(u32 _numVtx, graphics::DrawModePara
 	if (_numVtx == 0 || !_canDraw())
 		return;
 
+	// Experimental immersive mode: put these where the game's camera saw them
+	gSPImmersiveScreenTriangles(m_dmaVertices.data(), _numVtx);
+
 	f32 maxY = 0;
 	for (u32 i = 0; i < _numVtx; ++i) {
 		SPVertex & vtx = m_dmaVertices[i];

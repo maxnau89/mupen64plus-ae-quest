@@ -1597,10 +1597,10 @@ void FrameBufferList::renderBuffer()
 	if (config.stereo.immersive != 0 && pNextBuffer == nullptr) {
 		// Experimental immersive mode: the picture must fill exactly the field of view it was
 		// rendered for, without the border a TV would show
-		dstCoord[0] = hOffset;
-		dstCoord[1] = vOffset;
-		dstCoord[2] = hOffset + static_cast<s32>(m_overscan.getDrawingWidth());
-		dstCoord[3] = vOffset + static_cast<s32>(vFullHeight * dstScaleY);
+		dstCoord[0] = 0;
+		dstCoord[1] = 0;
+		dstCoord[2] = static_cast<s32>(m_overscan.getBufferWidth());
+		dstCoord[3] = static_cast<s32>(m_overscan.getBufferHeight());
 	}
 
 	ObjectHandle readBuffer;
@@ -1664,6 +1664,7 @@ void FrameBufferList::renderBuffer()
 		const s32 halfWidth = (_params.dstX1 - _params.dstX0) / 2;
 		GraphicsDrawer::BlitOrCopyRectParams leftParams = _params;
 		FrameBuffer * pLeftEye = StereoFrames::get().leftEye(_pSourceBuffer);
+#if STEREO_DIAGNOSTICS
 		{
 			// Diagnostic: how often a shown image has no pair and falls back to mono
 			static u32 shown = 0, missing = 0;
@@ -1674,6 +1675,7 @@ void FrameBufferList::renderBuffer()
 				LOG(LOG_MINIMAL, "Stereo pairs: shown=%u missing=%u", shown, missing);
 
 		}
+#endif
 		if (pLeftEye != nullptr) {
 			leftParams.tex[0] = pLeftEye->m_pTexture;
 			leftParams.srcWidth = pLeftEye->m_pTexture->width;
@@ -1726,6 +1728,7 @@ void FrameBufferList::renderBuffer()
 	gfxContext.bindFramebuffer(bufferTarget::READ_FRAMEBUFFER, ObjectHandle::defaultFramebuffer);
 	m_overscan.draw(vFullHeight, rdpRes.vi_ispal);
 
+#if STEREO_DIAGNOSTICS
 	if (config.stereo.mode == Config::stereoBothEyes) {
 		// Diagnostic: do the two halves of what goes on screen still differ?
 		static u32 outputFrames = 0;
@@ -1738,6 +1741,7 @@ void FrameBufferList::renderBuffer()
 				config.frameBufferEmulation.enableOverscan);
 		}
 	}
+#endif
 
 	// Experimental immersive mode: tell the headset which head pose this picture was drawn for
 	gSPImmersivePresent(pBuffer->m_startAddress);

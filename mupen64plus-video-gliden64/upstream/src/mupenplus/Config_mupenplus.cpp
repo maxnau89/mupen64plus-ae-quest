@@ -305,6 +305,10 @@ bool Config_SetDefault()
 	assert(res == M64ERR_SUCCESS);
 	res = ConfigSetDefaultFloat(g_configVideoGliden64, "StereoImmersiveDistance", config.stereo.immersiveDistance, "Immersive camera moved back, in units of the nearest scene depth.");
 	assert(res == M64ERR_SUCCESS);
+	res = ConfigSetDefaultFloat(g_configVideoGliden64, "StereoImmersiveWorldScale", config.stereo.immersiveWorldScale, "Immersive angular size of the scene, 1 keeps the game's own.");
+	assert(res == M64ERR_SUCCESS);
+	res = ConfigSetDefaultFloat(g_configVideoGliden64, "StereoImmersiveHudScale", config.stereo.immersiveHudScale, "Immersive angular size of HUD and overlays, 1 spans the old screen.");
+	assert(res == M64ERR_SUCCESS);
 
 	//#On screen display settings
 	res = ConfigSetDefaultBool(g_configVideoGliden64, "ShowFPS", config.onScreenDisplay.fps, "Show FPS counter.");
@@ -628,6 +632,10 @@ void Config_LoadConfig()
 	config.stereo.immersive = ConfigGetParamInt(g_configVideoGliden64, "StereoImmersive") != 0 ? 1 : 0;
 	config.stereo.immersiveDistance = std::max(0.0f, std::min(3.0f,
 		ConfigGetParamFloat(g_configVideoGliden64, "StereoImmersiveDistance")));
+	config.stereo.immersiveWorldScale = std::max(0.3f, std::min(1.0f,
+		ConfigGetParamFloat(g_configVideoGliden64, "StereoImmersiveWorldScale")));
+	config.stereo.immersiveHudScale = std::max(0.3f, std::min(1.0f,
+		ConfigGetParamFloat(g_configVideoGliden64, "StereoImmersiveHudScale")));
 	if (config.stereo.fovScale < 1.0f)
 		config.stereo.fovScale = 1.0f;
 

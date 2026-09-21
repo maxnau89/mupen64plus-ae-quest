@@ -228,12 +228,14 @@ void RSP_ProcessDList()
 		if (passes == 2 && pass == 0) {
 			FrameBuffer * current = frameBufferList().getCurrent();
 			StereoFrames::get().captureLeftEye(current);
+#if STEREO_DIAGNOSTICS
 			static bool stereoCaptureLogged = false;
 			if (!stereoCaptureLogged) {
 				LOG(LOG_MINIMAL, "Stereo diagnostic: left framebuffer=%p captured=%d",
 					current, StereoFrames::get().leftEye(current) != nullptr ? 1 : 0);
 				stereoCaptureLogged = true;
 			}
+#endif
 		}
 	}
 	if (haveFirstPassDmem)

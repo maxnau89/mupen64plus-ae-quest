@@ -144,6 +144,7 @@ struct ImmersivePose {
 struct ImmersivePresented {
     int64_t time = 0;  // CLOCK_MONOTONIC nanoseconds, just before the emulator queued the picture
     int id = 0;
+    bool flat = false;  // a cut scene the emulator drew for a screen, not for the head
 };
 
 struct PassthroughFns {
@@ -198,6 +199,7 @@ struct XrState {
     ImmersivePresented immersivePresented[kImmersivePoses];
     int immersivePresentedNext = 0;
     ImmersivePose immersiveShown;           // frame thread only: the pose of the picture on screen
+    bool immersiveShownFlat = false;
     jmethodID getTimestamp = nullptr;
 
     // Pointer ray at the menu quad, only while pointing is enabled
@@ -812,13 +814,19 @@ void findShownPose(XrState& xr, int64_t timestamp) {
     std::lock_guard<std::mutex> lock(xr.immersiveMutex);
     int id = 0;
     int64_t best = 0;
+    bool flat = false;
     for (const ImmersivePresented& presented : xr.immersivePresented) {
         if (presented.id > 0 && presented.time <= timestamp && presented.time > best) {
             best = presented.time;
             id = presented.id;
+            flat = presented.flat;
         }
     }
-    if (id <= 0 || id == xr.immersiveShown.id) {
+    if (id <= 0) {
+        return;
+    }
+    xr.immersiveShownFlat = flat;
+    if (id == xr.immersiveShown.id) {
         return;
     }
     const ImmersivePose& pose = xr.immersivePoses[id % kImmersivePoses];
@@ -1505,7 +1513,8 @@ void renderFrame(XrState& xr, JNIEnv* env) {
             // Immersive mode: each half is what one eye sees from the pose the frame was rendered
             // for. The compositor turns it to the current pose, so the world stays put between
             // emulated frames.
-            if (i == QUAD_GAME && xr.immersiveGame.load() && xr.immersiveShown.id > 0 && quad.width >= 2) {
+            if (i == QUAD_GAME && xr.immersiveGame.load() && !xr.immersiveShownFlat &&
+                xr.immersiveShown.id > 0 && quad.width >= 2) {
                 const ImmersivePose& shown = xr.immersiveShown;
                 const int32_t halfWidth = quad.width / 2;
                 const XrFovf fov = {-std::atan(shown.tangents[0]), std::atan(shown.tangents[0]),
@@ -1974,17 +1983,21 @@ __attribute__((visibility("default"))) int questxr_immersive_pose(float rotation
 }
 
 // Called by the video plug-in right before it queues the picture drawn for the pose
+// A negative id means the emulator drew that picture for a screen, not for the head
 __attribute__((visibility("default"))) void questxr_immersive_present(int id) {
     XrState* xr = gXr;
-    if (xr == nullptr || id <= 0) {
+    if (xr == nullptr || id == 0) {
         return;
     }
+    const bool flat = id < 0;
+    id = flat ? -id : id;
     timespec now{};
     clock_gettime(CLOCK_MONOTONIC, &now);
     std::lock_guard<std::mutex> lock(xr->immersiveMutex);
     ImmersivePresented& presented = xr->immersivePresented[xr->immersivePresentedNext];
     presented.time = static_cast<int64_t>(now.tv_sec) * 1000000000LL + now.tv_nsec;
     presented.id = id;
+    presented.flat = flat;
     xr->immersivePresentedNext = (xr->immersivePresentedNext + 1) % kImmersivePoses;
 }
 

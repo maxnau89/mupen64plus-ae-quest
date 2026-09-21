@@ -117,6 +117,7 @@ void gSPStereoBeginFrame()
 {
 	_immersiveCountVotes();
 	_immersiveBeginFrame();
+#if STEREO_DIAGNOSTICS
 	{
 		static u32 frames = 0;
 		if (frames++ % 300 == 0 && l_stereoXCount[Config::stereoLeftEye] > 0)
@@ -129,6 +130,7 @@ void gSPStereoBeginFrame()
 		memset(l_stereoXSum, 0, sizeof(l_stereoXSum));
 		memset(l_stereoXCount, 0, sizeof(l_stereoXCount));
 	}
+#endif
 	if (l_logWCount >= 32) {
 		const f32 nearEdge = _stereoPercentile(0.1f);
 		// Smoothed in log space so a sudden near object does not make the depth pump
@@ -137,11 +139,13 @@ void gSPStereoBeginFrame()
 			: nearEdge;
 		l_haveAutoConvergence = true;
 		l_autoConvergence = exp2f(l_autoLogConvergence);
+#if STEREO_DIAGNOSTICS
 		static u32 frames = 0;
 		if (frames++ % 600 == 0)
 			LOG(LOG_MINIMAL, "Stereo convergence: auto=%.1f w p10=%.1f p50=%.1f p90=%.1f vertices=%u",
 				l_autoConvergence, exp2f(nearEdge), exp2f(_stereoPercentile(0.5f)),
 				exp2f(_stereoPercentile(0.9f)), l_logWCount);
+#endif
 	}
 	memset(l_logWHistogram, 0, sizeof(l_logWHistogram));
 	l_logWCount = 0;
@@ -167,6 +171,11 @@ typedef void (*ImmersivePresentFunc)(int pose);
 static ImmersivePoseFunc l_immersivePoseFunc = nullptr;
 static ImmersivePresentFunc l_immersivePresentFunc = nullptr;
 static bool l_immersiveActive = false;      // a pose arrived for this frame
+// A camera far from the one the game plays with, such as a fly-over before a race. Everything the
+// immersive mode does is left out for those, and the picture goes back on the screen, because a
+// cut scene is framed for a screen and looks wrong stretched across the view.
+static bool l_immersiveFlat = false;
+static bool _immersiveOn() { return l_immersiveActive && !l_immersiveFlat; }
 static bool l_immersiveNeedsPose = true;    // a frame was shown since the last pose
 static int l_immersivePose = 0;             // id of the pose the current frame is drawn with
 static f32 l_immersiveQ[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};  // camera direction -> head direction
@@ -181,6 +190,14 @@ static f32 l_flipY = 1.0f;
 static bool l_combiningMatrices = false;
 // How far the camera is moved back, in the game's depth units, for the whole frame
 static f32 l_immersiveDistance = 0.0f;
+static f32 l_immersiveRefNearest = 0.0f;   // nearest depth of the scene the game plays at
+static f32 l_immersiveDepthA = 0.0f;       // z = -A*w + B, the game's own depth mapping
+static f32 l_immersiveDepthB = 0.0f;
+static f32 l_immersiveMovedA = 0.0f;       // the same after the camera moved back
+static f32 l_immersiveMovedB = 0.0f;
+static bool l_immersiveDistanceLocked = false;
+static u32 l_immersiveDistanceFrames = 0;
+static u32 l_immersiveNearestOffFrames = 0;
 static f32 l_gameSx = 1.0f;                 // the game's own projection scales, from its last
 static f32 l_gameSy = 1.33f;                // perspective matrix
 static const int kImmersiveBuffers = 8;
@@ -232,13 +249,32 @@ void _immersiveBeginFrame()
 	l_immersiveTan[0] = tangents[0];
 	l_immersiveTan[1] = tangents[1];
 	l_immersivePose = pose;
-	// The nearest scene depth is measured with the camera already moved back, so that part is taken
-	// off again before scaling
-	if (config.stereo.immersiveDistance > 0.0f && l_haveAutoConvergence) {
-		const f32 nearest = std::max(l_autoConvergence - l_immersiveDistance, l_autoConvergence * 0.1f);
-		l_immersiveDistance += (config.stereo.immersiveDistance * nearest - l_immersiveDistance) * 0.05f;
+	// How far back the camera goes. The nearest depth of the scene is measured with the camera
+	// already moved back, and moving it back pushes that measurement further away, so solving both
+	// at once avoids a loop that would drift outwards whenever the view changed. A cut scene far
+	// from everything keeps the distance the game plays at, until it lasts a few seconds.
+	if (config.stereo.immersiveDistance > 0.0f && l_haveAutoConvergence && l_autoConvergence > 0.0f) {
+		const f32 nearest = l_autoConvergence / (1.0f + config.stereo.immersiveDistance);
+		if (l_immersiveRefNearest <= 0.0f) {
+			l_immersiveRefNearest = nearest;
+		} else if (nearest > l_immersiveRefNearest / 1.5f && nearest < l_immersiveRefNearest * 1.5f) {
+			l_immersiveNearestOffFrames = 0;
+			l_immersiveRefNearest += (nearest - l_immersiveRefNearest) * 0.05f;
+		} else if (++l_immersiveNearestOffFrames > 60) {
+			l_immersiveNearestOffFrames = 0;
+			l_immersiveRefNearest = nearest;
+		}
+		// Settled once, it stays: a respawn or a corner with nothing near would otherwise send the
+		// camera far back for seconds on end.
+		if (!l_immersiveDistanceLocked) {
+			const f32 target = config.stereo.immersiveDistance * l_immersiveRefNearest;
+			l_immersiveDistance += (target - l_immersiveDistance) * 0.2f;
+			if (++l_immersiveDistanceFrames > 120)
+				l_immersiveDistanceLocked = true;
+		}
 	} else {
 		l_immersiveDistance = 0.0f;
+		l_immersiveRefNearest = 0.0f;
 	}
 	l_immersiveActive = true;
 	l_immersiveNeedsPose = false;
@@ -247,7 +283,7 @@ void _immersiveBeginFrame()
 
 bool gSPImmersiveActive()
 {
-	return l_immersiveActive && (l_stereoEye == Config::stereoLeftEye || l_stereoEye == Config::stereoRightEye);
+	return _immersiveOn() && (l_stereoEye == Config::stereoLeftEye || l_stereoEye == Config::stereoRightEye);
 }
 
 // Remembers which pose drew a color image, for when that image is shown
@@ -279,7 +315,7 @@ void gSPImmersivePresent(u32 _address)
 			break;
 		}
 	}
-	l_immersivePresentFunc(pose);
+	l_immersivePresentFunc(l_immersiveFlat ? -pose : pose);
 }
 
 // The game's projection scales. The camera may be part of the matrix, so they are the lengths of
@@ -312,18 +348,154 @@ void _immersiveVote(f32 sx, f32 sy)
 	}
 }
 
+// A cut scene camera with a much wider view would otherwise be shown at its own angles, far away
+// and past the edge of what the game draws. The scale the game plays at is kept, and a different one
+// is only accepted once it has lasted a few seconds, so a new camera still comes through.
+static const f32 kImmersiveScaleSlack = 1.2f;
+static const u32 kImmersiveScaleFrames = 300;  // about five seconds
+static f32 l_immersiveRefSx = 0.0f;
+static f32 l_immersiveRefSy = 0.0f;
+static u32 l_immersiveOffFrames = 0;
+static u32 l_immersiveFlatFrames = 0;
+static u32 l_immersiveSpriteCount;
+static u32 l_immersiveHudRectCount;
+// Screen rectangles of one frame, grouped by how they are drawn. A HUD is a handful of elements per
+// frame, while effects such as Star Wars Racer's engine glow and its sparks come in their hundreds,
+// so a group that large is taken to be part of the scene. Counted per frame and used on the next.
+struct ImmersiveRectKind { u32 key; u32 count; f32 size; f32 peak; };
+static const int kImmersiveRectKinds = 8;
+static const u32 kImmersiveEffectRects = 20;  // per frame
+static ImmersiveRectKind l_immersiveRectKinds[kImmersiveRectKinds];
+static int l_immersiveRectKindCount;
+// Telling effects from the HUD by how many rectangles of a kind a frame draws turned out to be
+// unstable: the counts move from frame to frame, elements changed place as they crossed the line,
+// and Star Wars Racer's HUD was mistaken for an effect. Kept for the log only.
+static
+bool _immersiveEffectKind(u32)
+{
+	return false;
+}
+static u32 l_immersiveSceneFrames = 0;
+
+// Going to the screen happens quickly, because a cut scene shown in the full view for half a second
+// is exactly what one notices. Coming back waits longer, so a single odd frame changes nothing.
+static
+void _immersiveSetFlat(bool _flat, const char * _why)
+{
+	const u32 kToScreen = 3;
+	const u32 kToView = 20;
+	if (_flat) {
+		l_immersiveSceneFrames = 0;
+		if (!l_immersiveFlat && ++l_immersiveFlatFrames > kToScreen) {
+			l_immersiveFlat = true;
+			l_immersiveRefNearest = l_immersiveDistance = 0.0f;
+			l_immersiveDistanceLocked = false;
+			l_immersiveDistanceFrames = 0;
+			LOG(LOG_MINIMAL, "Immersive: on the screen, %s %.0f degrees to the side", _why,
+				l_immersiveRefSx > 0.0f ? atanf(1.0f / l_immersiveRefSx) * 57.3f : 0.0f);
+		}
+	} else {
+		l_immersiveFlatFrames = 0;
+		if (l_immersiveFlat && ++l_immersiveSceneFrames > kToView) {
+			l_immersiveFlat = false;
+			l_immersiveRefNearest = l_immersiveDistance = 0.0f;
+			l_immersiveDistanceLocked = false;
+			l_immersiveDistanceFrames = 0;
+			LOG(LOG_MINIMAL, "Immersive: back in the view, the camera sees %.0f degrees to the side",
+				l_immersiveRefSx > 0.0f ? atanf(1.0f / l_immersiveRefSx) * 57.3f : 0.0f);
+		}
+	}
+}
+
 static
 void _immersiveCountVotes()
 {
-	int best = -1;
-	for (int i = 0; i < l_immersiveVoteCount; ++i)
-		if (best < 0 || l_immersiveVotes[i].count > l_immersiveVotes[best].count)
-			best = i;
-	if (best >= 0) {
-		l_gameSx = l_immersiveVotes[best].sx;
-		l_gameSy = l_immersiveVotes[best].sy;
-		l_immersiveVoted = true;
+	if (l_immersiveVoteCount == 0) {
+		// Nothing in perspective at all: a menu or a title screen, drawn flat for a screen. Spreading
+		// it over the view only smears its edges outwards. Games whose matrices are not counted this
+		// way, which is everything but the few microcodes that install their own, are left alone.
+		if (l_immersiveVoted)
+			_immersiveSetFlat(true, "nothing is drawn in perspective,");
+		return;
 	}
+	int best = 0, near = -1;
+	for (int i = 0; i < l_immersiveVoteCount; ++i) {
+		if (l_immersiveVotes[i].count > l_immersiveVotes[best].count)
+			best = i;
+		// The camera of the frame is whichever scale still matches the one the game plays at
+		if (l_immersiveRefSx > 0.0f &&
+			l_immersiveVotes[i].sx > l_immersiveRefSx / kImmersiveScaleSlack &&
+			l_immersiveVotes[i].sx < l_immersiveRefSx * kImmersiveScaleSlack &&
+			(near < 0 || l_immersiveVotes[i].count > l_immersiveVotes[near].count))
+			near = i;
+	}
+	// The camera of this frame is the scale most of its matrices agree on. It is steady within a
+	// scene, so it is followed closely and a lasting change is taken over quickly.
+	const f32 dominantSx = l_immersiveVotes[best].sx;
+	const f32 dominantSy = l_immersiveVotes[best].sy;
+	if (l_immersiveRefSx <= 0.0f) {
+		l_immersiveRefSx = dominantSx;
+		l_immersiveRefSy = dominantSy;
+		l_immersiveVoted = true;
+	} else if (dominantSx > l_immersiveRefSx / kImmersiveScaleSlack &&
+			dominantSx < l_immersiveRefSx * kImmersiveScaleSlack) {
+		l_immersiveOffFrames = 0;
+		l_immersiveRefSx += (dominantSx - l_immersiveRefSx) * 0.1f;
+		l_immersiveRefSy += (dominantSy - l_immersiveRefSy) * 0.1f;
+	} else if (++l_immersiveOffFrames > 10) {
+		l_immersiveOffFrames = 0;
+		l_immersiveRefSx = dominantSx;
+		l_immersiveRefSy = dominantSy;
+	}
+
+	// A camera narrower than this cannot fill the headset's view: whatever the game draws would sit
+	// in the middle of a large empty surround, as Star Wars Racer's fly-over before a race does.
+	// Those go back on the screen, where they were framed to be seen.
+	const f32 kNarrowTangent = 0.577f;  // 30 degrees to the side
+	_immersiveSetFlat(1.0f / l_immersiveRefSx < kNarrowTangent, "the camera sees only");
+	{
+		// A group stays an effect for a while after it thins out: Star Wars Racer draws far fewer
+		// sparks during the countdown, and its engine glow must not jump to the HUD plane meanwhile.
+		for (int i = 0; i < l_immersiveRectKindCount; ++i) {
+			ImmersiveRectKind & kind = l_immersiveRectKinds[i];
+			kind.peak = std::max(kind.peak * 0.99f, static_cast<f32>(kind.count));
+			kind.count = 0;
+			kind.size = 0.0f;
+		}
+#if STEREO_DIAGNOSTICS
+		static u32 frames = 0;
+		if (frames++ % 120 == 0) {
+			// The three most used scales of this frame, with how many matrices used them
+			int order[3] = {-1, -1, -1};
+			for (int i = 0; i < l_immersiveVoteCount; ++i) {
+				for (int slot = 0; slot < 3; ++slot) {
+					if (order[slot] < 0 || l_immersiveVotes[i].count > l_immersiveVotes[order[slot]].count) {
+						for (int move = 2; move > slot; --move)
+							order[move] = order[move - 1];
+						order[slot] = i;
+						break;
+					}
+				}
+			}
+			auto scaleOf = [&order](int slot) { return order[slot] < 0 ? 0.0f : l_immersiveVotes[order[slot]].sx; };
+			auto countOf = [&order](int slot) { return order[slot] < 0 ? 0u : l_immersiveVotes[order[slot]].count; };
+			LOG(LOG_MINIMAL, "Immersive scales: ucode=%u ref=%.3f near=%d top=%.3f(%u) %.3f(%u) %.3f(%u) sprites=%u distance=%.1f",
+				GBI.getMicrocodeType(),
+				l_immersiveRefSx, near, scaleOf(0), countOf(0), scaleOf(1), countOf(1), scaleOf(2), countOf(2),
+				l_immersiveSpriteCount, l_immersiveDistance);
+			LOG(LOG_MINIMAL, "Immersive rects: world=%u hud=%u depthA=%.3f depthB=%.1f",
+				l_immersiveSpriteCount, l_immersiveHudRectCount, l_immersiveDepthA, l_immersiveDepthB);
+			for (int i = 0; i < l_immersiveRectKindCount; ++i)
+				LOG(LOG_MINIMAL, "Immersive rect kind: cycle=%u blend=0x%04x count=%u peak=%.0f effect=%d",
+					l_immersiveRectKinds[i].key >> 24, l_immersiveRectKinds[i].key & 0xFFFF,
+					l_immersiveRectKinds[i].count, l_immersiveRectKinds[i].peak,
+					l_immersiveRectKinds[i].peak > kImmersiveEffectRects ? 1 : 0);
+		}
+#endif
+		l_immersiveSpriteCount = l_immersiveHudRectCount = 0;
+	}
+	l_gameSx = l_immersiveRefSx;
+	l_gameSy = l_immersiveRefSy;
 	l_immersiveVoteCount = 0;
 }
 
@@ -333,6 +505,7 @@ void _immersiveMeasureProjection(const f32 m[4][4])
 	const f32 lw = sqrtf(m[0][3] * m[0][3] + m[1][3] * m[1][3] + m[2][3] * m[2][3]);
 	if (lw < 1e-9f)
 		return;
+#if STEREO_DIAGNOSTICS
 	{
 		// Diagnostic: scales, off-centre terms and viewport, now and then
 		static u32 calls = 0;
@@ -346,6 +519,7 @@ void _immersiveMeasureProjection(const f32 m[4][4])
 				gSP.viewport.vscale[0], gSP.viewport.vscale[1], gSP.viewport.vtrans[0], gSP.viewport.vtrans[1]);
 		}
 	}
+#endif
 	const f32 sx = sqrtf(m[0][0] * m[0][0] + m[1][0] * m[1][0] + m[2][0] * m[2][0]) / lw;
 	const f32 sy = sqrtf(m[0][1] * m[0][1] + m[1][1] * m[1][1] + m[2][1] * m[2][1]) / lw;
 	if (sx > 0.05f && sx < 50.0f && sy > 0.05f && sy < 50.0f) {
@@ -376,16 +550,37 @@ void _immersiveApply(f32 m[4][4])
 {
 	const f32 c3 = m[0][3] * m[0][3] + m[1][3] * m[1][3] + m[2][3] * m[2][3];
 	const f32 A = c3 > 0.0f ? -(m[0][2] * m[0][3] + m[1][2] * m[1][3] + m[2][2] * m[2][3]) / c3 : 0.0f;
+	// z = -A*w + B is the game's depth mapping, with the near and far plane it was built for
+	const f32 B = m[3][2] + A * m[3][3];
+	l_immersiveDepthA = A;
+	l_immersiveDepthB = B;
+	l_immersiveMovedA = A;
+	l_immersiveMovedB = B;
 	// Optionally the camera moves back along its own axis: every depth grows by the same amount.
-	// The translation row is what the vertex's homogeneous 1 multiplies.
-	if (l_immersiveDistance > 0.0f) {
-		m[3][3] += l_immersiveDistance;
-		m[3][2] -= A * l_immersiveDistance;
+	// The translation row is what the vertex's homogeneous 1 multiplies. Both planes move with it,
+	// otherwise what was just inside the far plane would fall out of the picture, which is what made
+	// distant pod racers disappear.
+	if (l_immersiveDistance > 0.0f && fabsf(A) > 1e-6f && fabsf(B) > 1e-6f) {
+		const f32 nearPlane = B / (A - 1.0f) + l_immersiveDistance;
+		const f32 farPlane = B / (A + 1.0f) + l_immersiveDistance;
+		if (nearPlane > 0.0f && farPlane > nearPlane) {
+			m[3][3] += l_immersiveDistance;
+			const f32 movedB = -2.0f * nearPlane * farPlane / (farPlane - nearPlane);
+			const f32 movedA = movedB / nearPlane + 1.0f;
+			for (int i = 0; i < 3; ++i)
+				m[i][2] = -movedA * m[i][3];
+			m[3][2] = -movedA * m[3][3] + movedB;
+			l_immersiveMovedA = movedA;
+			l_immersiveMovedB = movedB;
+		}
 	}
 	f32 t[4][4] = {};
 	// Rows are the inputs x, y, z, w
-	_immersiveProject(1.0f / l_gameSx, 0.0f, 0.0f, t[0][0], t[0][1], t[0][3]);
-	_immersiveProject(0.0f, l_flipY / l_gameSy, 0.0f, t[1][0], t[1][1], t[1][3]);
+	// The world scale shows the game's view at a smaller angle, as if its camera had a narrower
+	// field of view: head turns still match, everything is just less close to the eye.
+	const f32 world = config.stereo.immersiveWorldScale;
+	_immersiveProject(world / l_gameSx, 0.0f, 0.0f, t[0][0], t[0][1], t[0][3]);
+	_immersiveProject(0.0f, l_flipY * world / l_gameSy, 0.0f, t[1][0], t[1][1], t[1][3]);
 	_immersiveProject(0.0f, 0.0f, -1.0f, t[3][0], t[3][1], t[3][3]);
 	t[2][2] = 1.0f;
 	t[0][2] = -A * t[0][3];
@@ -404,9 +599,9 @@ void _immersiveApply(f32 m[4][4])
 // screen was, straight ahead of where the player faced, like the picture on a wall: a background
 // at infinity, an overlay at the screen plane. ndc is in the game's normalized screen coordinates.
 static
-void _immersivePlaceFlat(f32 nx, f32 ny, f32 nz, f32 & x, f32 & y, f32 & z, f32 & w)
+void _immersivePlaceFlat(f32 nx, f32 ny, f32 nz, f32 & x, f32 & y, f32 & z, f32 & w, f32 _scale)
 {
-	_immersiveProject(nx / l_gameSx, ny / l_gameSy, -1.0f, x, y, w);
+	_immersiveProject(nx * _scale / l_gameSx, ny * _scale / l_gameSy, -1.0f, x, y, w);
 	z = nz * w;
 }
 
@@ -421,7 +616,8 @@ void _immersivePlaceSky(f32 nx, f32 ny, f32 nz, f32 & x, f32 & y, f32 & z, f32 &
 	const f32 kFar = 40.0f;  // about 85 degrees at a typical game field of view
 	if (nx >= kEdge) nx = kFar; else if (nx <= -kEdge) nx = -kFar;
 	if (ny >= kEdge) ny = kFar; else if (ny <= -kEdge) ny = -kFar;
-	_immersivePlaceFlat(nx, ny, nz, x, y, z, w);
+	// A background belongs to the scene, so it follows the world, not the overlay scale
+	_immersivePlaceFlat(nx, ny, nz, x, y, z, w, config.stereo.immersiveWorldScale);
 }
 
 // Stereo separation is in normalized screen units. The immersive picture spans the headset's view,
@@ -432,19 +628,69 @@ f32 _stereoSeparation()
 {
 	const f32 separation = l_stereoEye == Config::stereoLeftEye
 		? -config.stereo.separation : config.stereo.separation;
-	return l_immersiveActive ? separation * 0.5f / l_immersiveTan[0] : separation;
+	return _immersiveOn() ? separation * 0.5f / l_immersiveTan[0] : separation;
 }
 
 // Games that install their own matrices, like Factor 5's, clear only their viewport. Immersive mode
 // stretches that viewport over the whole picture, so the border keeps old frames around.
 bool gSPImmersiveClearsShownBuffers()
 {
+	// Also while a cut scene is on the screen: the border would still hold what immersive frames
+	// drew there, and with double buffering that flickers along the edge.
 	return l_immersiveActive && l_immersiveVoted;
+}
+
+// A depth in the picture, moved the same way the camera moved back, so an effect the game placed in
+// screen space stays with the world around it instead of sinking behind it.
+// Screen space effects carry no usable depth of their own: Star Wars Racer leaves the depth of its
+// rectangles at zero, which read as "right in front of the camera" and threw them about. They stay
+// where the game put them.
+static
+f32 _immersiveSpriteDepth(f32 _z, f32 & _shrink)
+{
+	_shrink = 1.0f;
+	return _z;
+}
+
+// Some microcodes draw world effects, such as Star Wars Racer's engine glow, as screen rectangles
+// they placed themselves. Those belong in the scene, not on the HUD.
+static bool l_immersiveWorldSprite = false;
+
+// diagnostic: world effects placed this frame
+void gSPImmersiveWorldSprite(bool _world)
+{
+	l_immersiveWorldSprite = _world;
+	if (_world)
+		++l_immersiveSpriteCount;
 }
 
 bool gSPImmersiveBackground()
 {
 	return !l_stereoPerspectiveSeen;
+}
+
+// Screen space triangles carry no depth of their own, but the game put them where its camera saw
+// them, so their direction is known. Factor 5 draws engine glows and other particles this way.
+void gSPImmersiveScreenTriangles(SPVertex * _vertices, u32 _count)
+{
+	if (!gSPImmersiveActive() || !l_immersiveVoted)
+		return;
+	const f32 halfWidth = static_cast<f32>(gDP.colorImage.width) * 0.5f;
+	const f32 halfHeight = (VI.height > 0 ? static_cast<f32>(VI.height) : halfWidth * 1.5f) * 0.5f;
+	for (u32 i = 0; i < _count; ++i) {
+		SPVertex & vtx = _vertices[i];
+		f32 x, y, z, w;
+		f32 shrink = 1.0f;
+		const f32 depth = _immersiveSpriteDepth(vtx.z, shrink);
+		_immersivePlaceFlat((vtx.x / halfWidth - 1.0f) * shrink, (1.0f - vtx.y / halfHeight) * shrink,
+			depth, x, y, z, w, config.stereo.immersiveWorldScale);
+		if (w <= 0.0f)
+			continue;
+		// The shader multiplies these by w again, so they stay plain pixels
+		vtx.x = (1.0f + x / w) * halfWidth;
+		vtx.y = (1.0f - y / w) * halfHeight;
+		vtx.w = w;
+	}
 }
 
 void gSPImmersiveRect(RectVertex * _vertices, u32 _count, bool _fullScreen)
@@ -497,12 +743,44 @@ void gSPImmersiveRect(RectVertex * _vertices, u32 _count, bool _fullScreen)
 			return;
 		}
 	}
+	// A rectangle that is tested against the depth of the scene belongs to the world, like Star Wars
+	// Racer's engine glow, not to the HUD. Only for games whose own matrices are followed, so the
+	// plain path stays as it was.
+	const u32 kind = (static_cast<u32>(gDP.otherMode.cycleType) << 24) |
+		(static_cast<u32>(gDP.otherMode.l >> 16) & 0xFFFF);
+	const bool world = l_immersiveWorldSprite || (l_immersiveVoted &&
+		(gDP.otherMode.depthSource == G_ZS_PRIM || gDP.otherMode.depthCompare != 0 ||
+		 _immersiveEffectKind(kind)));
+	if (world)
+		++l_immersiveSpriteCount;
+	else
+		++l_immersiveHudRectCount;
+	{
+		// Diagnostic: group the rectangles of a frame by how they are drawn, to tell the world
+		// effects from the HUD
+		const u32 key = kind;
+		const f32 size = fabsf(_vertices[3].x - _vertices[0].x);
+		int slot = -1;
+		for (int i = 0; i < l_immersiveRectKindCount; ++i)
+			if (l_immersiveRectKinds[i].key == key)
+				slot = i;
+		if (slot < 0 && l_immersiveRectKindCount < kImmersiveRectKinds)
+			slot = l_immersiveRectKindCount++;
+		if (slot >= 0) {
+			l_immersiveRectKinds[slot].key = key;
+			++l_immersiveRectKinds[slot].count;
+			l_immersiveRectKinds[slot].size += size;
+		}
+	}
 	for (u32 i = 0; i < _count; ++i) {
 		RectVertex & v = _vertices[i];
 		const f32 nx = v.x / (width * 0.5f) - 1.0f;
 		const f32 ny = 1.0f - v.y / (height * 0.5f);
 		f32 x, y, z, w;
-		_immersivePlaceFlat(nx, ny, v.z, x, y, z, w);
+		f32 shrink = 1.0f;
+		const f32 depth = world ? _immersiveSpriteDepth(v.z, shrink) : v.z;
+		_immersivePlaceFlat(nx * shrink, ny * shrink, depth, x, y, z, w,
+			world ? config.stereo.immersiveWorldScale : config.stereo.immersiveHudScale);
 		// Back to homogeneous N64 pixels, which the rectangle shader divides out
 		v.x = (w + x) * width * 0.5f;
 		v.y = (w - y) * height * 0.5f;
@@ -528,9 +806,13 @@ void gSPApplyStereo(f32 matrix[4][4])
 	if (!_isOrthographic(matrix)) {
 		if (l_immersiveActive) {
 			// Measured on the projection when it holds the perspective, since the modelview may scale
-			// objects unevenly. Factor 5 and ZSort install the combined matrix directly.
+			// objects unevenly. Factor 5 and ZSort install the combined matrix directly. This keeps
+			// running while a cut scene is on the screen, or the camera it plays at could never be
+			// recognised again.
 			_immersiveMeasureProjection(l_combiningMatrices && !_isOrthographic(gSP.matrix.projection)
 				? gSP.matrix.projection : matrix);
+		}
+		if (_immersiveOn()) {
 			_immersiveApply(matrix);
 		} else {
 			// Scaling clip-space x/y by the reciprocal widens the original game's projection while
@@ -1282,7 +1564,7 @@ void gSPApplyStereoConvergence(u32 v, SPVertex * spVtx)
 		SPVertex & vtx = spVtx[v+j];
 		// gSPApplyStereo() already contributed separation*w, which is the parallax at infinity.
 		const f32 matrixShift = separation * vtx.w;
-		if (orthographic && l_immersiveActive) {
+		if (orthographic && _immersiveOn()) {
 			// A background such as Super Mario 64's sky covers the game's screen and is stretched over
 			// the whole view, keeping the parallax at infinity the matrix gave. Overlays are placed
 			// where the game's screen was, on the screen plane.
@@ -1295,7 +1577,8 @@ void gSPApplyStereoConvergence(u32 v, SPVertex * spVtx)
 				// Factor 5 overlays reaching the edge of the screen, such as fades, cover the view
 				_immersivePlaceSky((vtx.x - matrixShift) / ow, l_flipY * vtx.y / ow, vtx.z / ow, x, y, z, w);
 			} else {
-				_immersivePlaceFlat((vtx.x - matrixShift) / ow, l_flipY * vtx.y / ow, vtx.z / ow, x, y, z, w);
+				_immersivePlaceFlat((vtx.x - matrixShift) / ow, l_flipY * vtx.y / ow, vtx.z / ow, x, y, z, w,
+					config.stereo.immersiveHudScale);
 			}
 			vtx.x = x;
 			vtx.y = l_flipY * y;

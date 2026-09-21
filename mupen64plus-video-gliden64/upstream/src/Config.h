@@ -14,6 +14,12 @@
 
 const u32 gc_uMegabyte = 1024U * 1024U;
 
+// Diagnostics for the experimental stereo and immersive modes. They were written for finding the
+// regressions those modes went through, are noisy, and one of them reads the frame buffer back, so
+// they are compiled out unless someone is looking into it.
+#define STEREO_DIAGNOSTICS 0
+
+
 struct Config
 {
 	u32 version;
@@ -219,6 +225,8 @@ struct Config
 		f32 depthBoost;   // 0 is physical depth, 1 spreads far geometry the most
 		u32 immersive;    // 1 follows the headset: head rotation turns the camera, headset field of view
 		f32 immersiveDistance;  // immersive camera moved back, in units of the nearest scene depth
+		f32 immersiveWorldScale;  // immersive angular size of the scene, 1 keeps the game's own
+		f32 immersiveHudScale;    // immersive angular size of HUD and overlays, 1 spans the old screen
 	} stereo;
 
 	enum CountersPosition {

@@ -239,6 +239,8 @@ class NativeConfigFiles
         mupen64plus_cfg.put( "Video-GLideN64", "StereoDepthBoost", String.valueOf( game.stereo3dDepthBoost / 100.0f ) );
         mupen64plus_cfg.put( "Video-GLideN64", "StereoImmersive", game.stereo3dImmersive ? "1" : "0" );
         mupen64plus_cfg.put( "Video-GLideN64", "StereoImmersiveDistance", String.valueOf( game.stereo3dImmersiveDistance / 100.0f ) );
+        mupen64plus_cfg.put( "Video-GLideN64", "StereoImmersiveWorldScale", String.valueOf( game.stereo3dImmersiveWorld / 100.0f ) );
+        mupen64plus_cfg.put( "Video-GLideN64", "StereoImmersiveHudScale", String.valueOf( game.stereo3dImmersiveHud / 100.0f ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "bilinearMode", boolToTF( game.glideN64Prefs.bilinearMode ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "enableHalosRemoval", boolToTF( game.glideN64Prefs.enableHalosRemoval ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "MaxAnisotropy", String.valueOf( game.glideN64Prefs.maxAnisotropy ) );
@@ -266,8 +268,12 @@ class NativeConfigFiles
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "EnableN64DepthCompare", String.valueOf(game.glideN64Prefs.enableN64DepthCompare ? 1 : 0) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "ForceDepthBufferClear", boolToTF( game.glideN64Prefs.forceDepthBufferClear ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "UseNativeResolutionFactor", String.valueOf( game.glideN64Prefs.useNativeResolutionFactor ) );
-        putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "txFilterMode", String.valueOf( game.glideN64Prefs.txFilterMode ) );
-        putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "txEnhancementMode", String.valueOf( game.glideN64Prefs.txEnhancementMode ) );
+        // Immersive mode magnifies textures far beyond what the screen quad did: xBRZ keeps small
+        // HUD fonts readable. 9 is 2xBRZ, 3 a slight smoothing before it.
+        putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "txFilterMode",
+                String.valueOf( game.stereo3dImmersiveSharpTextures ? 3 : game.glideN64Prefs.txFilterMode ) );
+        putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "txEnhancementMode",
+                String.valueOf( game.stereo3dImmersiveSharpTextures ? 9 : game.glideN64Prefs.txEnhancementMode ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "txDeposterize", boolToTF( game.glideN64Prefs.txDeposterize ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "txFilterIgnoreBG", boolToTF( game.glideN64Prefs.txFilterIgnoreBG ) );
         putGLideN64Setting(mupen64plus_cfg, glideN64_conf, game, "txCacheSize", String.valueOf( game.glideN64Prefs.txCacheSize ) );

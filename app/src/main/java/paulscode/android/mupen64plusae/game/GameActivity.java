@@ -563,6 +563,9 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
                     + " convergence=" + mGamePrefs.stereo3dConvergence
                     + " fov=" + mGamePrefs.stereo3dFov
                     + " immersive=" + mGamePrefs.stereo3dImmersive
+                    + " world=" + mGamePrefs.stereo3dImmersiveWorld
+                    + " hud=" + mGamePrefs.stereo3dImmersiveHud
+                    + " distance=" + mGamePrefs.stereo3dImmersiveDistance
                     + " XR=" + xrGameWidth + "x" + xrGameHeight);
             mQuestTouchController = new QuestTouchController(mCoreFragment, this);
             if (QuestXr.create(this, mQuestTouchController,
@@ -579,6 +582,8 @@ public class GameActivity extends AppCompatActivity implements PromptConfirmList
                 // Experimental stereoscopic 3D puts both eyes into the game image, side by side
                 QuestXr.setStereoGame(mGamePrefs.stereo3dMode == 3);
                 QuestXr.setImmersiveGame(mGamePrefs.stereo3dImmersive);
+                // Photos keep one eye, which in immersive mode is the whole view
+                mGameSurface.setStereoSideBySide(mGamePrefs.stereo3dMode == 3);
                 mQuestN64Overlay = new QuestN64Overlay(QuestXr.getSurface(QuestXr.QUAD_CONTROLLER),
                         XR_CONTROLLER_WIDTH, XR_CONTROLLER_HEIGHT);
                 mQuestN64Overlay.update(new boolean[AbstractController.NUM_N64_BUTTONS], 0, 0);

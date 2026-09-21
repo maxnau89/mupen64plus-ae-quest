@@ -219,6 +219,8 @@ bool gSPImmersiveClearsShownBuffers();
 void gSPImmersiveFrameDrawn(u32 _address);
 void gSPImmersivePresent(u32 _address);
 void gSPImmersiveRect(RectVertex * _vertices, u32 _count, bool _fullScreen);
+void gSPImmersiveScreenTriangles(SPVertex * _vertices, u32 _count);
+void gSPImmersiveWorldSprite(bool _world);
 
 void gSPTriangle(u32 v0, u32 v1, u32 v2);
 void gSP1Triangle(u32 v0, u32 v1, u32 v2);

@@ -168,6 +168,35 @@
             mupen64:units="%" />
 
         <paulscode.android.mupen64plusae.preference.SeekBarPreference
+            android:defaultValue="100"
+            android:dependency="stereo3dImmersive"
+            android:key="stereo3dImmersiveWorld"
+            android:summary="@string/stereo3dImmersiveWorld_summary"
+            android:title="@string/stereo3dImmersiveWorld_title"
+            mupen64:maximumValue="100"
+            mupen64:minimumValue="40"
+            mupen64:stepSize="5"
+            mupen64:units="%" />
+
+        <paulscode.android.mupen64plusae.preference.SeekBarPreference
+            android:defaultValue="100"
+            android:dependency="stereo3dImmersive"
+            android:key="stereo3dImmersiveHud"
+            android:summary="@string/stereo3dImmersiveHud_summary"
+            android:title="@string/stereo3dImmersiveHud_title"
+            mupen64:maximumValue="100"
+            mupen64:minimumValue="40"
+            mupen64:stepSize="5"
+            mupen64:units="%" />
+
+        <androidx.preference.CheckBoxPreference
+            android:defaultValue="false"
+            android:dependency="stereo3dImmersive"
+            android:key="stereo3dImmersiveSharpTextures"
+            android:summary="@string/stereo3dImmersiveSharp_summary"
+            android:title="@string/stereo3dImmersiveSharp_title" />
+
+        <paulscode.android.mupen64plusae.preference.SeekBarPreference
             android:defaultValue="0"
             android:key="stereo3dDepthBoost"
             android:summary="@string/stereo3dDepthBoost_summary"

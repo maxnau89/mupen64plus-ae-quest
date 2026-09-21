@@ -190,6 +190,16 @@ public class GameSurface extends SurfaceView implements SurfaceHolder.Callback
         mSurfaceTexture = null;
     }
 
+    /**
+     * In stereo the emulator draws both eyes side by side. A screenshot of that is a double image,
+     * so only the left eye is kept: in immersive mode that is the whole view as one eye sees it.
+     */
+    public void setStereoSideBySide(boolean stereo) {
+        mStereoSideBySide = stereo;
+    }
+
+    private volatile boolean mStereoSideBySide = false;
+
     public void takeScreenshot(String directory, String filename) {
         Log.i(TAG, "takeScreenshot: " + directory + " " + filename);
         Notifier.showToast(mContext, R.string.toast_savingScreenshot);
@@ -871,7 +881,9 @@ public class GameSurface extends SurfaceView implements SurfaceHolder.Callback
             Matrix mirror = new Matrix();
             mirror.setScale(-1, 1);
             mirror.postRotate(180);
-            Bitmap screenshot = Bitmap.createBitmap(screenshotMirrored, 0, 0, screenshotMirrored.getWidth(),
+            Bitmap screenshot = Bitmap.createBitmap(screenshotMirrored,
+                    0, 0,
+                    mStereoSideBySide ? screenshotMirrored.getWidth() / 2 : screenshotMirrored.getWidth(),
                     screenshotMirrored.getHeight(), mirror, false);
             screenshot.setDensity(DisplayMetrics.DENSITY_DEFAULT);
 

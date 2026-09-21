@@ -304,6 +304,15 @@ public class GamePrefs
     /** Immersive camera moved back, in percent of the nearest scene depth */
     public final int stereo3dImmersiveDistance;
 
+    /** Immersive angular size of the scene in percent, 100 keeps the game's own */
+    public final int stereo3dImmersiveWorld;
+
+    /** Immersive angular size of HUD and overlays in percent, 100 spans the old screen */
+    public final int stereo3dImmersiveHud;
+
+    /** Enhance small textures, for games whose HUD font falls apart in immersive mode */
+    public final boolean stereo3dImmersiveSharpTextures;
+
     /** 64DD IDL path */
     public final String idlPath64Dd;
 
@@ -615,9 +624,18 @@ public class GamePrefs
         enable64DdSupport = mPreferences.getBoolean( SUPPORT_64DD, false );
 
         stereo3dImmersive = mPreferences.getBoolean( STEREO_3D_IMMERSIVE, false );
-        stereo3dImmersiveHeight = Math.max( 480, Math.min( 2160,
-                getSafeInt( mPreferences, "stereo3dImmersiveHeight", 1440 ) ) );
-        stereo3dImmersiveDistance = mPreferences.getInt( "stereo3dImmersiveDistance", 0 );
+        stereo3dImmersiveHeight = Math.max( 480, Math.min( 2160, getSafeInt( mPreferences,
+                "stereo3dImmersiveHeight",
+                containsAny( headerName, goodName, "racer" ) ? 1080 : 1440 ) ) );
+        // Immersive mode suits some games better at other settings, tuned in the headset
+        final boolean isRacer = containsAny( headerName, goodName, "racer" )
+                && containsAny( headerName, goodName, "star wars", "ep1", "episode" );
+        stereo3dImmersiveDistance = mPreferences.getInt( "stereo3dImmersiveDistance", isRacer ? 150 : 0 );
+        stereo3dImmersiveWorld = mPreferences.getInt( "stereo3dImmersiveWorld", isRacer ? 70 : 100 );
+        stereo3dImmersiveHud = mPreferences.getInt( "stereo3dImmersiveHud", isRacer ? 65 : 100 );
+        // Immersive mode spreads a tiny HUD font over a wide angle, so upscale the textures
+        stereo3dImmersiveSharpTextures = stereo3dImmersive
+                && mPreferences.getBoolean( "stereo3dImmersiveSharpTextures", isRacer );
         // Immersive mode renders both eyes, whatever the eye setting says
         stereo3dMode = stereo3dImmersive ? 3 : getSafeInt( mPreferences, STEREO_3D_MODE, 0 );
         stereo3dSeparation = mPreferences.getInt( STEREO_3D_SEPARATION, 30 );
@@ -700,6 +718,19 @@ public class GamePrefs
         FileUtil.deleteFolder(new File(mAppData.coreSharedDataDir));
         mAppData.putAssetCheckNeeded(true);
         ActivityHelper.startSplashActivity(context);
+    }
+
+    /** True when either name contains one of the words, ignoring case */
+    private static boolean containsAny( String headerName, String goodName, String... words )
+    {
+        final String names = ((headerName != null ? headerName : "") + " "
+                + (goodName != null ? goodName : "")).toLowerCase();
+        for (final String word : words) {
+            if (names.contains(word)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean isDpadGame(String headerName, String gameGoodName) {
