@@ -55,8 +55,14 @@ is recorded in [the support list](docs/game-support.md) — it is a short list.
 clicks. Save, load, screenshot, menu and exit are always one click away, and opening the menu no
 longer covers the game.
 
-**Netplay from inside VR.** Hosting and joining a room works in the headset, without the 2D dialogs
-that are invisible in an immersive app.
+**Netplay from inside VR, with a room code to share.** Hosting and joining works in the headset,
+without the 2D dialogs that are invisible in an immersive app. A host can ask for a ten digit room
+code; anyone who has the code joins over the internet, from a headset or from a phone running
+Mupen64Plus-AE. On the same network, rooms are found without a code at all.
+
+**RetroAchievements.** Inherited from Mupen64Plus-AE and working in the headset: log in once, and
+achievements unlock while you play, with the challenge indicators and a mastery card when a game is
+finished. Softcore only, so save states stay allowed.
 
 **A library built for a headset.** A persistent rail, big hit targets, and every settings category
 one click away instead of buried in a drawer.
@@ -134,8 +140,33 @@ Navigate with a stick and A, or point a controller at it and pull the trigger.
 **Adjust screen** hides the menu and lets you place the screen: hold a grip and move your hand to
 drag it, push a stick up or down to resize. A, B or a Menu tap finishes.
 
-For netplay, open a game and pick **Netplay server** or **Connect netplay** from the game page.
-Online room codes need UPnP enabled on your router.
+### Netplay
+
+Open a game and pick **Netplay server** or **Connect netplay** on the game page. Everything after
+that happens on the menu beside the screen.
+
+**As the host:** the room opens and lists the players as they arrive. **Get online room code** asks
+for a ten digit code, which takes a moment and needs UPnP enabled on your router; pass it to the
+others in whatever chat you like. **Start game** begins once everyone is in.
+
+**As a guest:** rooms on the same network appear by themselves, so pick one and wait for the host.
+From elsewhere, choose **Enter room code** and type the ten digits with the controller.
+
+Both sides need the same ROM. The other players do not need a headset: the same rooms work with
+Mupen64Plus-AE on a phone.
+
+### RetroAchievements
+
+Open **RetroAchievements** from the rail in the library, switch it on and log in with your
+retroachievements.org account. The password is used once to fetch a token and is not kept.
+
+While you play, unlocked achievements pop up, challenges show as indicators, and finishing a game
+gives you a mastery card. **Achievements** in the in-game menu lists what a game has and what you
+already hold. Optional extras are rich presence, which shows on your profile what you are playing,
+and unofficial achievements.
+
+Achievements are **softcore**: save states and loading stay available, and nothing you do here can
+earn a hardcore unlock.
 
 ## Requirements
 
