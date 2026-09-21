@@ -63,7 +63,8 @@ one click away instead of buried in a drawer.
 
 ## Screenshots
 
-Star Wars Episode I: Racer in immersive mode, rendered with the headset's field of view:
+Star Wars Episode I: Racer in immersive mode. Above the canyon the picture simply ends: the game
+draws its sky only as high as its own camera ever looked.
 
 ![Star Wars Episode I: Racer in immersive mode](docs/screenshots/immersive/racer-canyon.jpg)
 

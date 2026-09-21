@@ -192,6 +192,7 @@ struct XrState {
     bool immersiveHaveViews = false;
     XrPosef immersiveEyes[2] = {};          // latest eye poses
     float immersiveTan[2] = {1.0f, 1.0f};   // rendered half angle tangents, x and y
+    float immersiveVisibleTan[2] = {1.0f, 1.0f};  // the same without the margin: what the eye sees
     bool immersiveReferenceSet = false;
     float immersiveReferenceYaw = 0.0f;     // where the game's camera looks
     int immersiveNextId = 0;
@@ -862,6 +863,8 @@ void updateImmersiveViews(XrState& xr, XrTime time) {
     xr.immersiveEyes[1] = views[1].pose;
     xr.immersiveTan[0] = std::tan(std::min(halfX + kMargin, 1.4f));
     xr.immersiveTan[1] = std::tan(std::min(halfY + kMargin, 1.4f));
+    xr.immersiveVisibleTan[0] = std::tan(halfX);
+    xr.immersiveVisibleTan[1] = std::tan(halfY);
     if (!xr.immersiveReferenceSet) {
         xr.immersiveReferenceYaw = forwardYaw(views[0].pose.orientation);
         xr.immersiveReferenceSet = true;
@@ -1929,6 +1932,29 @@ Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeSetStereoGame(JNIEnv*
     if (gXr != nullptr) {
         gXr->stereoGame = enabled;
     }
+}
+
+// How much of a rendered frame the headset actually shows, across and down. A frame is rendered a
+// few degrees wider than the view so a head turn between emulated frames does not show its edge;
+// that margin belongs in the picture, not in a screenshot of it.
+JNIEXPORT jfloatArray JNICALL
+Java_paulscode_android_mupen64plusae_game_xr_QuestXr_nativeGetImmersiveVisibleFraction(JNIEnv* env, jclass) {
+    float fraction[2] = {1.0f, 1.0f};
+    if (gXr != nullptr && gXr->immersiveGame.load()) {
+        std::lock_guard<std::mutex> lock(gXr->immersiveMutex);
+        if (gXr->immersiveHaveViews) {
+            for (int axis = 0; axis < 2; ++axis) {
+                if (gXr->immersiveTan[axis] > 0.0f) {
+                    fraction[axis] = std::min(1.0f, gXr->immersiveVisibleTan[axis] / gXr->immersiveTan[axis]);
+                }
+            }
+        }
+    }
+    jfloatArray result = env->NewFloatArray(2);
+    if (result != nullptr) {
+        env->SetFloatArrayRegion(result, 0, 2, fraction);
+    }
+    return result;
 }
 
 // Immersive mode: head rotation turns the game's camera, the picture fills the view

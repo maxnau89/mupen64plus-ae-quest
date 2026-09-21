@@ -226,6 +226,21 @@ public class QuestXr
         }
     }
 
+    /**
+     * How much of a rendered frame the headset shows, across and down, as two factors between 0 and
+     * 1. A frame is rendered wider than the view on purpose.
+     */
+    public static float[] getImmersiveVisibleFraction()
+    {
+        if (sLibraryLoaded) {
+            final float[] fraction = nativeGetImmersiveVisibleFraction();
+            if (fraction != null && fraction.length == 2) {
+                return fraction;
+            }
+        }
+        return new float[] {1.0f, 1.0f};
+    }
+
     /** Immersive mode: the emulator renders for the head pose, the picture fills the view. */
     public static void setImmersiveGame(boolean enabled)
     {
@@ -295,6 +310,7 @@ public class QuestXr
     private static native void nativeSetPointerEnabled(boolean enabled);
     private static native void nativeSetStereoGame(boolean enabled);
     private static native void nativeSetImmersiveGame(boolean enabled);
+    private static native float[] nativeGetImmersiveVisibleFraction();
     private static native boolean nativeSetControllerModel(ByteBuffer mesh, Bitmap texture);
     private static native void nativeSetN64State(int buttons, float axisX, float axisY);
     private static native void nativeSetController3dVisible(boolean visible);

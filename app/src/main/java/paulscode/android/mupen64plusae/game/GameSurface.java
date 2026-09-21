@@ -63,6 +63,7 @@ import paulscode.android.mupen64plusae.util.PixelBuffer;
 import static android.view.Surface.FRAME_RATE_COMPATIBILITY_DEFAULT;
 
 import paulscode.android.mupen64plusae.R;
+import paulscode.android.mupen64plusae.game.xr.QuestXr;
 
 /**
  * Represents a graphical area of memory that can be drawn to.
@@ -198,7 +199,18 @@ public class GameSurface extends SurfaceView implements SurfaceHolder.Callback
         mStereoSideBySide = stereo;
     }
 
+    /**
+     * Immersive frames are rendered a few degrees wider than the headset shows, so a head turn
+     * between two emulated frames does not reveal their edge. That margin holds the seams of the
+     * stretched sky and whatever the game left unfinished at its border, and none of it is ever
+     * seen. A screenshot is cut back to what the eye gets.
+     */
+    public void setImmersivePhotoCrop(boolean immersive) {
+        mImmersivePhotoCrop = immersive;
+    }
+
     private volatile boolean mStereoSideBySide = false;
+    private volatile boolean mImmersivePhotoCrop = false;
 
     public void takeScreenshot(String directory, String filename) {
         Log.i(TAG, "takeScreenshot: " + directory + " " + filename);
@@ -881,10 +893,19 @@ public class GameSurface extends SurfaceView implements SurfaceHolder.Callback
             Matrix mirror = new Matrix();
             mirror.setScale(-1, 1);
             mirror.postRotate(180);
+            final int eyeWidth = mStereoSideBySide
+                    ? screenshotMirrored.getWidth() / 2 : screenshotMirrored.getWidth();
+            final int eyeHeight = screenshotMirrored.getHeight();
+            int cropWidth = eyeWidth;
+            int cropHeight = eyeHeight;
+            if (mImmersivePhotoCrop) {
+                final float[] visible = QuestXr.getImmersiveVisibleFraction();
+                cropWidth = Math.max(16, Math.round(eyeWidth * Math.min(1.0f, visible[0])));
+                cropHeight = Math.max(16, Math.round(eyeHeight * Math.min(1.0f, visible[1])));
+            }
             Bitmap screenshot = Bitmap.createBitmap(screenshotMirrored,
-                    0, 0,
-                    mStereoSideBySide ? screenshotMirrored.getWidth() / 2 : screenshotMirrored.getWidth(),
-                    screenshotMirrored.getHeight(), mirror, false);
+                    (eyeWidth - cropWidth) / 2, (eyeHeight - cropHeight) / 2,
+                    cropWidth, cropHeight, mirror, false);
             screenshot.setDensity(DisplayMetrics.DENSITY_DEFAULT);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
