@@ -11,6 +11,8 @@ On top of that sits **immersive mode**, which goes one step further: the screen 
 is rendered with the headset's own field of view, and turning your head turns the camera. It is
 described in its own section below.
 
+Which games were actually tried, and how far, is recorded in [the support list](game-support.md).
+
 ## Status
 
 Working in the Quest headset at full per-eye resolution (640x480 per eye) with Super Mario 64,

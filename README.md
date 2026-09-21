@@ -46,7 +46,10 @@ shown as a flat overlay under the screen, or turned off.
 television. This fork renders them twice, once per eye, so they gain genuine depth — and in
 **immersive mode** the screen disappears: the game is rendered with the headset's field of view, and
 turning your head turns the camera. Both are experimental, switched on per game from the game page,
-and explained in [the note on stereoscopic 3D](docs/stereo-3d.md).
+and explained in [the note on stereoscopic 3D](docs/stereo-3d.md). Which games were actually tried
+is recorded in [the support list](docs/game-support.md) — it is a short list.
+
+![Super Mario 64 in immersive mode](docs/screenshots/immersive/mario64-castle.jpg)
 
 **A dock under the screen and a menu beside it.** Point at them with a controller, the trigger
 clicks. Save, load, screenshot, menu and exit are always one click away, and opening the menu no
@@ -59,6 +62,12 @@ that are invisible in an immersive app.
 one click away instead of buried in a drawer.
 
 ## Screenshots
+
+Star Wars Episode I: Racer in immersive mode, rendered with the headset's field of view:
+
+![Star Wars Episode I: Racer in immersive mode](docs/screenshots/immersive/racer-canyon.jpg)
+
+---
 
 Mario Kart 64 on a screen in the room, with the dock below it:
 
