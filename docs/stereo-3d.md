@@ -234,18 +234,32 @@ Config options reaching the plugin, all in the `Video-GLideN64` section and writ
 3. **Try more games in immersive mode.** Super Mario 64 and Star Wars Episode I: Racer were tuned
    in the headset. Everything else is untested. Games that lean on framebuffer effects, or write
    back to RDRAM mid-frame, may not take a second walk so quietly either.
-4. **Screen space effects and a moved camera.** A game that positions effects in screen space
+4. **The cut scene and overlay rules only reach microcodes that install their own matrix.**
+   `_immersiveVote()` in [`gSP.cpp`](../mupen64plus-video-gliden64/upstream/src/gSP.cpp) is only fed
+   when `l_combiningMatrices` is false, which is Factor 5, ZSort and anything else going through
+   `gSPForceMatrix()`. Everything else — Pokémon Stadium, Mario Kart 64, Super Mario 64 — takes the
+   ordinary `_gSPCombineMatrices()` path, sets `l_gameSx` directly and never votes, so
+   `l_immersiveVoted` stays false and three things stay switched off for those games:
+   `_immersiveCountVotes()` never runs, so neither a narrow cut scene camera nor a frame with
+   nothing in perspective ever puts the picture back on the screen quad; the full viewport overlay
+   rule in `gSPImmersiveRect()` is skipped, so a fade covers only where the old screen was; and
+   `gSPImmersiveClearsShownBuffers()` returns false. Pokémon Stadium shows all of it: its scene
+   transitions fade a small rectangle in the middle, and its main menu is spread across the view
+   instead of sitting on a screen in black. Feeding the votes from the combining path as well would
+   fix all three at once, but Super Mario 64 is tuned as it is and would start switching to the
+   screen quad in its menus, so it needs a careful look rather than a one line change.
+5. **Screen space effects and a moved camera.** A game that positions effects in screen space
    itself, as Racer does with its engine glow, gives them no depth to follow. Racer leaves the depth
    of those rectangles at zero, and deriving one from it reads as "right in front of the camera",
    which threw them about. Assuming the near edge of the scene would suit the player's own vehicle
    and overshoot for everything further away.
-5. **Rogue Squadron is blurry in immersive mode.** Only there, and at every resolution setting; the
+6. **Rogue Squadron is blurry in immersive mode.** Only there, and at every resolution setting; the
    camera values in the log look sound. Somewhere GLideN64 falls back to a native resolution buffer
    for that game. Unsolved.
-6. **`ZSortBOSS` is not hooked.** It can store the combined matrix back to RDRAM, and a sheared
+7. **`ZSortBOSS` is not hooked.** It can store the combined matrix back to RDRAM, and a sheared
    matrix written into the game's own memory would corrupt its state. It needs the unsheared matrix
    kept alongside first.
-7. **Per game defaults from a table.** Good separation, world size and HUD size values differ
+8. **Per game defaults from a table.** Good separation, world size and HUD size values differ
    wildly. Star Wars Episode I: Racer has its own in `GamePrefs`, matched by name; a table keyed by
    ROM header name, like GLideN64's own `GLideN64.custom.ini`, would scale better.
 

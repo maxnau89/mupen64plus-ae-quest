@@ -24,7 +24,7 @@ they cost roughly twice the graphics work.
 | Super Mario 64 | ✅ | ✅ | The reference case. Depth, sky, HUD and cut scenes all behave. The sky is a flat picture covering the game's own view, so its edges are stretched outwards |
 | Star Wars Episode I: Racer | ✅ | ⚠️ | Tuned in the headset and ships with its own defaults. Its sky reaches only as high as its own camera looked, so above a canyon the picture ends in black. Menus, the fly-over before a race and the title screens go back on the screen. Engine glows sit still for the two seconds the camera distance settles after a scene change |
 | Mario Kart 64 | ✅ | ⚠️ | Depth needs the depth boost, 50% suits it. Immersive was only checked briefly, and its sky is a flat band that does not reach far |
-| Pokémon Stadium | ✅ | ❓ | Depth confirmed on the screen quad. Immersive untested |
+| Pokémon Stadium | ✅ | ⚠️ | Close to right in the headset. Two things are missing, both because this game goes through the ordinary matrix path: its scene transitions fade only the area the old screen covered instead of the whole view, and its main menu stays spread across the view instead of going back on the screen with black around it. See *What is left* in [the technical note](stereo-3d.md) |
 | Star Wars: Rogue Squadron | ✅ | ⚠️ | 3D is fine. In immersive mode the picture is blurry at every resolution setting, for reasons not yet found |
 
 ## Untested
