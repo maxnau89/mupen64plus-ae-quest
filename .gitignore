@@ -53,3 +53,6 @@ crashreport.txt
 
 # Transifex client
 tx.exe
+
+# macOS
+.DS_Store
