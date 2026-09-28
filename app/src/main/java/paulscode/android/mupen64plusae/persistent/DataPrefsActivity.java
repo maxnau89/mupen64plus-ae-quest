@@ -22,13 +22,20 @@ package paulscode.android.mupen64plusae.persistent;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
+import android.provider.Settings;
+import android.text.InputType;
+import android.util.Log;
 
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 import androidx.documentfile.provider.DocumentFile;
 import androidx.preference.Preference;
 import androidx.preference.Preference.OnPreferenceClickListener;
@@ -39,10 +46,12 @@ import paulscode.android.mupen64plusae.R;
 
 import paulscode.android.mupen64plusae.ActivityHelper;
 import paulscode.android.mupen64plusae.compat.AppCompatPreferenceActivity;
+import paulscode.android.mupen64plusae.dialog.Prompt;
 import paulscode.android.mupen64plusae.preference.PrefUtil;
 import paulscode.android.mupen64plusae.util.FileUtil;
 import paulscode.android.mupen64plusae.util.LegacyFilePicker;
 import paulscode.android.mupen64plusae.util.LocaleContextWrapper;
+import paulscode.android.mupen64plusae.util.Notifier;
 
 public class DataPrefsActivity extends AppCompatPreferenceActivity implements OnPreferenceClickListener,
     SharedPreferences.OnSharedPreferenceChangeListener
@@ -52,6 +61,9 @@ public class DataPrefsActivity extends AppCompatPreferenceActivity implements On
     private GlobalPrefs mGlobalPrefs = null;
 
     private SharedPreferences mPrefs = null;
+
+    // Runs once all files access has been granted from the settings screen
+    private Runnable mPendingStorageAction = null;
 
     ActivityResultLauncher<Intent> mLaunchGameDataFolderPicker = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
@@ -65,16 +77,31 @@ public class DataPrefsActivity extends AppCompatPreferenceActivity implements On
                     if (currentPreference != null && fileUri != null) {
 
                         if (!mAppData.useLegacyFileBrowser) {
-                            getContentResolver().takePersistableUriPermission(fileUri, Intent.FLAG_GRANT_READ_URI_PERMISSION |
-                                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                            // The data folder is written to, so a folder the picker only granted
+                            // read access to must not be stored (GitHub #2).
+                            try {
+                                getContentResolver().takePersistableUriPermission(fileUri, Intent.FLAG_GRANT_READ_URI_PERMISSION |
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                            } catch (SecurityException e) {
+                                Log.e("DataPrefsActivity", "No write permission for " + fileUri, e);
+                                Notifier.showToast(this, R.string.dataFolder_no_write_access);
+                                return;
+                            }
                         }
 
-                        DocumentFile file = FileUtil.getDocumentFileTree(this, fileUri);
-                        String summary = file.getName();
-                        currentPreference.setSummary(summary);
-                        mGlobalPrefs.putString(GlobalPrefs.PATH_GAME_SAVES, fileUri.toString());
+                        storeGameDataFolder(fileUri);
                     }
                 }
+            });
+
+    ActivityResultLauncher<Intent> mManageStorageLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
+                        && mPendingStorageAction != null) {
+                    mPendingStorageAction.run();
+                }
+                mPendingStorageAction = null;
             });
 
     ActivityResultLauncher<Intent> mLaunchIdlFilePicker = registerForActivityResult(
@@ -176,7 +203,7 @@ public class DataPrefsActivity extends AppCompatPreferenceActivity implements On
         final String key = preference.getKey();
 
         if (GlobalPrefs.PATH_GAME_SAVES.equals(key)) {
-            startFolderPicker();
+            chooseGameDataFolderSource();
         } else if (GlobalPrefs.PATH_JAPAN_IPL_ROM.equals(key)) {
             startFilePicker();
         } else {// Let Android handle all other preference clicks
@@ -229,6 +256,83 @@ public class DataPrefsActivity extends AppCompatPreferenceActivity implements On
                 mPrefs.getString(GlobalPrefs.GAME_DATA_STORAGE_TYPE, "external").equals("external"));
     }
 
+    private void storeGameDataFolder(Uri folderUri)
+    {
+        Preference currentPreference = findPreference(GlobalPrefs.PATH_GAME_SAVES);
+        if (currentPreference != null) {
+            DocumentFile file = FileUtil.getDocumentFileTree(this, folderUri);
+            currentPreference.setSummary(file == null ? "" : file.getName());
+        }
+        mGlobalPrefs.putString(GlobalPrefs.PATH_GAME_SAVES, folderUri.toString());
+    }
+
+    /**
+     * Same two ways in as for ROMs: the system folder picker, or a typed path with all files
+     * access for when the picker refuses the folder (GitHub #2).
+     */
+    private void chooseGameDataFolderSource()
+    {
+        final CharSequence[] items = {
+                getString(R.string.scanRomsDialog_select_folder),
+                getString(R.string.scanRomsDialog_enter_path)
+        };
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.gameDataStorageExternalPath_title)
+                .setItems(items, (dialog, which) -> {
+                    if (which == 0) {
+                        startFolderPicker();
+                    } else {
+                        ensureManageStoragePermission(this::startManualPathEntry);
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void ensureManageStoragePermission(Runnable onGranted)
+    {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R || Environment.isExternalStorageManager()) {
+            onGranted.run();
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.scanRomsDialog_storage_permission_title)
+                .setMessage(R.string.scanRomsDialog_storage_permission_message)
+                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
+                    final Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    mPendingStorageAction = onGranted;
+                    mManageStorageLauncher.launch(intent);
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void startManualPathEntry()
+    {
+        Prompt.promptText(this, getString(R.string.scanRomsDialog_enter_path_title), null,
+                "/storage/emulated/0/", getString(R.string.dataFolder_enter_path_hint), InputType.TYPE_CLASS_TEXT,
+                (text, which) -> {
+                    if (which != DialogInterface.BUTTON_POSITIVE || text == null) {
+                        return;
+                    }
+                    final DataFolderPath.Result result = DataFolderPath.check(text.toString());
+                    switch (result.status) {
+                        case OK:
+                            storeGameDataFolder(Uri.fromFile(result.folder));
+                            break;
+                        case NOT_WRITABLE:
+                            Notifier.showToast(this, R.string.dataFolder_not_writable, result.folder.getPath());
+                            break;
+                        case EMPTY:
+                            break;
+                        default:
+                            Notifier.showToast(this, R.string.scanRomsDialog_path_not_found, text.toString().trim());
+                            break;
+                    }
+                });
+    }
+
     private void startFolderPicker()
     {
         Intent intent;
@@ -236,11 +340,12 @@ public class DataPrefsActivity extends AppCompatPreferenceActivity implements On
         if (mAppData.useLegacyFileBrowser) {
             intent = new Intent(this, LegacyFilePicker.class);
             intent.putExtra( ActivityHelper.Keys.CAN_SELECT_FILE, false );
-            intent.putExtra( ActivityHelper.Keys.CAN_VIEW_EXT_STORAGE, false);
+            intent.putExtra( ActivityHelper.Keys.CAN_VIEW_EXT_STORAGE, true);
         } else {
             intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
             intent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION |
                     Intent.FLAG_GRANT_READ_URI_PERMISSION|
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION|
                     Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
             intent.putExtra(Intent.EXTRA_LOCAL_ONLY, true);
         }

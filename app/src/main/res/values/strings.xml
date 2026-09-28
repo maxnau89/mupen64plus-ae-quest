@@ -874,6 +874,9 @@
     <string name="scanRomsDialog_path_not_found">Directory not found: %s</string>
     <string name="scanRomsDialog_storage_permission_title">Storage Permission Required</string>
     <string name="scanRomsDialog_storage_permission_message">To browse files outside the app sandbox, grant \'All files access\' permission.</string>
+    <string name="dataFolder_enter_path_hint">/storage/emulated/0/M64Plus</string>
+    <string name="dataFolder_not_writable">Folder is not writable: %s</string>
+    <string name="dataFolder_no_write_access">No write access to this folder. Pick another folder or enter a path instead.</string>
 
     <!-- Import/Export Activity -->
     <string name="importExportActivity_title">Import/Export Data</string>
