@@ -27,6 +27,7 @@ import androidx.appcompat.app.AlertDialog.Builder;
 import androidx.preference.ListPreference;
 import android.text.TextUtils;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.View;
 import android.widget.ArrayAdapter;
 
@@ -49,7 +50,12 @@ public class ProfilePreference extends ListPreference implements OnPreferenceDia
     
     private final boolean mAllowDisable;
     private final String mManagerAction;
-    
+
+    /** Set by populateProfiles() when the persisted value doesn't match any current profile, so
+     * getCurrentValue() can show a fallback in the UI without persisting it. Null when the
+     * persisted value is valid. */
+    private String mUnpersistedFallback;
+
     public ProfilePreference( Context context )
     {
         super( context );
@@ -179,37 +185,51 @@ public class ProfilePreference extends ListPreference implements OnPreferenceDia
             values[i + offset] = profile.name;
         }
         
-        // Set the list entries and values; select default if persisted selection no longer exists
+        // Set the list entries and values
         setEntries( entries );
         setEntryValues( values );
         String selectedValue = getPersistedString( null );
 
-        //If the provided selected value no longer exists, revert to the default
+        // If the persisted selection no longer matches a current profile, just show a fallback in
+        // the UI; do not overwrite the persisted preference. The mismatch may be transient (e.g.
+        // the custom profiles config still reloading), and GamePrefs' profile loaders already
+        // fall back to the default profile at runtime when the stored name doesn't exist, so
+        // persisting the fallback here isn't needed and would risk silently discarding the
+        // user's real choice.
         if( !ArrayUtils.contains( values, selectedValue ) )
         {
+            Log.w( "ProfilePreference", "Persisted profile \"" + selectedValue +
+                    "\" for key \"" + getKey() + "\" was not found; showing a fallback without persisting it" );
+
             //If a global default is allowed, use the default, if not, use provided
             // default directly, else use disabled
             if(allowDefaultProfile && defaultProfile != null)
             {
-                persistString( defaultProfileTitle.toString() );
+                mUnpersistedFallback = defaultProfileTitle.toString();
             }
             else if (defaultValue != null)
             {
-                persistString( defaultValue );
+                mUnpersistedFallback = defaultValue;
             }
             else if(mAllowDisable)
             {
-                persistString("");
+                mUnpersistedFallback = "";
+            }
+            else
+            {
+                mUnpersistedFallback = selectedValue;
             }
         }
-
-        selectedValue = getPersistedString( null );
-        setValue( selectedValue );
+        else
+        {
+            mUnpersistedFallback = null;
+            setValue( selectedValue );
+        }
     }
-    
+
     public String getCurrentValue(String defaultValue)
     {
-        return getPersistedString( defaultValue );
+        return mUnpersistedFallback != null ? mUnpersistedFallback : getPersistedString( defaultValue );
     }
 
     @Override

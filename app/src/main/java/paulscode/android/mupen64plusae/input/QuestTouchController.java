@@ -90,6 +90,15 @@ public class QuestTouchController extends AbstractController implements QuestXr.
     private float mReportedX = 0;
     private float mReportedY = 0;
 
+    // This controller's own last-derived N64 state — not the shared mState (see
+    // AbstractController.sStates: every controller mapped to the same player, e.g. a
+    // Bluetooth/USB gamepad's PeripheralController, reads and writes the very same State
+    // object). Used so this controller only touches the fields of mState that it actually
+    // owns a change to, instead of overwriting the whole shared object every XR frame.
+    private final boolean[] mTouchButtons = new boolean[NUM_N64_BUTTONS];
+    private float mTouchAxisX = 0;
+    private float mTouchAxisY = 0;
+
     public QuestTouchController(CoreFragment coreFragment, SessionListener sessionListener)
     {
         super(coreFragment);
@@ -152,7 +161,7 @@ public class QuestTouchController extends AbstractController implements QuestXr.
 
         // The right grip is the D-pad modifier, so it can't double as R
         final boolean dpadHeld = rightGrip > TRIGGER_THRESHOLD;
-        final boolean[] b = mState.buttons;
+        final boolean[] b = new boolean[NUM_N64_BUTTONS];
         b[BTN_A] = (buttons & QuestXr.BTN_A) != 0;
         b[BTN_B] = (buttons & QuestXr.BTN_B) != 0;
         b[START] = now < mStartPulseUntil;
@@ -174,10 +183,7 @@ public class QuestTouchController extends AbstractController implements QuestXr.
         b[DPD_U] = dpadHeld && up;
         b[DPD_D] = dpadHeld && down;
 
-        mState.axisFractionX = applyDeadzone(leftX);
-        mState.axisFractionY = applyDeadzone(leftY);
-
-        notifyChanged(false);
+        applyTouchState(b, applyDeadzone(leftX), applyDeadzone(leftY));
         reportState();
     }
 
@@ -262,12 +268,45 @@ public class QuestTouchController extends AbstractController implements QuestXr.
     /** Release all N64 buttons and center the stick. */
     public void releaseAll()
     {
-        Arrays.fill(mState.buttons, false);
-        mState.axisFractionX = 0;
-        mState.axisFractionY = 0;
         mStartPulseUntil = 0;
-        notifyChanged(false);
+        applyTouchState(new boolean[NUM_N64_BUTTONS], 0, 0);
         reportState();
+    }
+
+    /**
+     * Applies this controller's freshly-derived N64 state to the shared per-player
+     * {@link State} (mState — see AbstractController.sStates), touching only the fields that
+     * actually changed since this controller last derived a state, and notifying the core only
+     * if something did. Another controller mapped to the same player (e.g. a Bluetooth/USB
+     * gamepad's PeripheralController) reads and writes that very same State object; this
+     * controller runs once per XR frame regardless of whether the Touch controllers are being
+     * used, so writing (or notifying) unconditionally would stomp the other controller's held
+     * buttons/stick with this controller's idle/released state. A real change — including
+     * releaseAll()'s transition back to all-released — is still applied and sent.
+     */
+    private void applyTouchState(boolean[] newButtons, float newAxisX, float newAxisY)
+    {
+        boolean changed = false;
+        for (int i = 0; i < NUM_N64_BUTTONS; ++i) {
+            if (newButtons[i] != mTouchButtons[i]) {
+                mTouchButtons[i] = newButtons[i];
+                mState.buttons[i] = newButtons[i];
+                changed = true;
+            }
+        }
+        if (newAxisX != mTouchAxisX) {
+            mTouchAxisX = newAxisX;
+            mState.axisFractionX = newAxisX;
+            changed = true;
+        }
+        if (newAxisY != mTouchAxisY) {
+            mTouchAxisY = newAxisY;
+            mState.axisFractionY = newAxisY;
+            changed = true;
+        }
+        if (changed) {
+            notifyChanged(false);
+        }
     }
 
     private void reportState()
