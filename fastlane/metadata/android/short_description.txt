@@ -1,1 +1,1 @@
-Nintendo 64 emulator for Android.
+N64 emulator for Meta Quest: VR screen, Touch controls, 3D and immersive mode.

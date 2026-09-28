@@ -448,6 +448,13 @@
             android:resource="@drawable/hireslogo" />
         <meta-data android:name="android.max_aspect"
                    android:value="2.1"/>
+        <!-- Meta Quest: declares which headset models this build targets so unlisted
+             devices don't silently fall back to compatibility mode. Only devices this
+             app actually supports (minSdk 28, arm64-v8a, OpenXR) are listed; the
+             original Quest 1 (armv7, no OpenXR support) is intentionally excluded.
+             https://developers.meta.com/horizon/resources/publish-mobile-manifest/ -->
+        <meta-data android:name="com.oculus.supportedDevices"
+                   android:value="quest2|questpro|quest3|quest3s" />
     </application>
 
 </manifest>

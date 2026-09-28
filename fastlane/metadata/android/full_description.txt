@@ -1,19 +1,19 @@
-Mupen64Plus, Android Edition (AE) is an N64 emulator for Android.
+M64Plus Quest brings the Nintendo 64 into VR on your Meta Quest. It is a fork of the well known Mupen64Plus-AE Android emulator, rebuilt as a native OpenXR app: the game hangs on a screen you place in your room, or fills your whole view in immersive mode.
 
-All necessary cores and plugins are included. There are many caveats though.
+FEATURES
+- Native VR, not a flat app in a window: a sharp OpenXR screen you grab and place yourself, with passthrough so your room stays visible around it
+- Touch controllers act as a real N64 controller, mapped one to one, no remapping needed
+- A 3D N64 controller model rendered in your hands, lighting up as you press buttons
+- Experimental stereoscopic 3D and immersive mode: the screen disappears, the game renders at the headset's field of view, and turning your head turns the camera (see the project docs for the short list of tested games)
+- Netplay from inside VR: host or join with a ten digit room code, playable together with Mupen64Plus-AE running on a phone
+- RetroAchievements support, softcore, so save states stay available
+- Everything else Mupen64Plus-AE offers: save states, texture packs, shaders, cheats
 
-* There will be issues with specific games or devices.
-* Not all games work, but most do.
-* For games that do work, you may have to try different video plugins
-* This includes the new GLideN64 plugin which should work with most games as long as your device is powerful enough. Not all games will work with default GLideN64 settings though, so you may have to play around with creating new profiles.
-* Not all video plugins will work with every device, and there could be glitches.
-* There are many missing translations. It may be better to stick with English.
-* Transfer pak is suported, but not writing back to save data and no gameboy tower support.
-* 64DD is supported, but not writing back to disk.
+GETTING STARTED
+1. Turn on developer mode on your Quest and connect it through SideQuest
+2. Install this APK from SideQuest
+3. Open the app, tap Add ROMs, and point it at a folder holding your own N64 game backups
+4. Pick a game from your library and start playing
 
-For support, please go to either: /r/EmulationOnAndroid or www.paulscode.com
-
-Here is a great guide: http://www.paulscode.com/forum/index.php?topic=15692.0
-Here is how to modify controller mappings: http://www.paulscode.com/forum/index.php?topic=15812.0
-
-
+LEGAL
+No games are included. You need your own legally obtained N64 ROM backups; this app does not provide, host, or link to copyrighted game files. Not affiliated with or endorsed by Nintendo. Open source under GPL-3.0, built on Mupen64Plus-AE and GLideN64. Source code: github.com/maxnau89/mupen64plus-ae-quest

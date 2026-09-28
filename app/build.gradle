@@ -2,6 +2,24 @@ apply plugin: 'com.android.application'
 apply plugin: 'signing'
 apply from: '../build_common/version_common.gradle'
 
+// Release signing: read from keystore.properties (gitignored, repo root) or from
+// MQ_KEYSTORE_FILE / MQ_KEYSTORE_PASSWORD / MQ_KEY_ALIAS / MQ_KEY_PASSWORD env vars.
+// Env vars win over the properties file. If neither is fully set (e.g. plain CI
+// builds via `./gradlew assemble`), release falls back to debug signing so the
+// build keeps working without secrets.
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+
+def mqKeystoreFile = System.getenv("MQ_KEYSTORE_FILE") ?: keystoreProperties.getProperty("storeFile")
+def mqKeystorePassword = System.getenv("MQ_KEYSTORE_PASSWORD") ?: keystoreProperties.getProperty("storePassword")
+def mqKeyAlias = System.getenv("MQ_KEY_ALIAS") ?: keystoreProperties.getProperty("keyAlias")
+def mqKeyPassword = System.getenv("MQ_KEY_PASSWORD") ?: keystoreProperties.getProperty("keyPassword")
+
+def hasReleaseSigning = mqKeystoreFile && mqKeystorePassword && mqKeyAlias && mqKeyPassword
+
 android {
 
     namespace = "paulscode.android.mupen64plusae"
@@ -23,9 +41,19 @@ android {
     defaultConfig {
         applicationId = "org.mupen64plusae.v3.quest"
     }
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile rootProject.file(mqKeystoreFile)
+                storePassword mqKeystorePassword
+                keyAlias mqKeyAlias
+                keyPassword mqKeyPassword
+            }
+        }
+    }
     buildTypes {
         release {
-            signingConfig = signingConfigs.debug
+            signingConfig = hasReleaseSigning ? signingConfigs.release : signingConfigs.debug
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             ndk {

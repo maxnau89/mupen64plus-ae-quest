@@ -36,6 +36,9 @@ build/
 *.pydevproject
 local.properties
 gradle.properties
+keystore.properties
+*.jks
+*.keystore
 app/.directory
 app/release
 app/.cxx
