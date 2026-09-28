@@ -1,0 +1,58 @@
+// PS1 spike: a minimal libretro frontend (libps1frontend.so) that dlopens the Beetle PSX HW core
+// and renders it onto an Android Surface (the QUAD_GAME surface from quest-xr).
+//
+// The core itself is NOT built by Gradle. Build it once with ndk-build (cd beetle-psx-libretro/jni && ndk-build HAVE_HW=1 APP_ABI=arm64-v8a)
+// and point -PbeetlePsxCore=/abs/path/libretro.so at it, or keep the default location next to this repo.
+// It is packaged as libbeetle_psx_hw.so. Beetle PSX is GPLv2; the app is GPLv3 - license compatibility is an open question for the spike.
+apply plugin: 'com.android.library'
+apply from: '../build_common/version_common.gradle'
+
+def beetleCoreSo = file(project.findProperty('beetlePsxCore')
+        ?: "${rootDir}/../beetle-psx-libretro/libs/arm64-v8a/libretro.so")
+def beetleJniDir = layout.buildDirectory.dir('beetleJniLibs')
+
+android {
+    namespace = "org.mupen64plusae.ps1"
+
+    externalNativeBuild {
+        cmake {
+            version = "3.22.1"
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+
+    defaultConfig {
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_static", "-DCMAKE_BUILD_TYPE=Release"
+                abiFilters "arm64-v8a"
+            }
+        }
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs += beetleJniDir
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+}
+
+// Copies the prebuilt core into the jniLibs of this module, renamed so the packager keeps it (lib*.so)
+tasks.register('copyBeetleCore', Copy) {
+    from(beetleCoreSo) {
+        rename { 'libbeetle_psx_hw.so' }
+    }
+    into beetleJniDir.map { it.dir('arm64-v8a') }
+    doFirst {
+        if (!beetleCoreSo.exists()) {
+            logger.warn("ps1-libretro: Beetle PSX core not found at ${beetleCoreSo}; the APK will not contain it")
+        }
+    }
+}
+preBuild.dependsOn 'copyBeetleCore'

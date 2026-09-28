@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- PS1 spike, merged into debug builds only -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Exported so it can be started with adb am start; own process keeps it apart from the N64 core -->
+        <activity
+            android:name="paulscode.android.mupen64plusae.ps1.Ps1SpikeActivity"
+            android:exported="true"
+            android:label="PS1 spike"
+            android:theme="@style/Theme.Mupen64plusaeTheme.Game"
+            android:process=":Ps1Process">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="com.oculus.intent.category.VR" />
+                <category android:name="org.khronos.openxr.intent.category.IMMERSIVE_HMD" />
+            </intent-filter>
+            <meta-data android:name="com.oculus.vr.focusaware" android:value="true" />
+        </activity>
+    </application>
+</manifest>

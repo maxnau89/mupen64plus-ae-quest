@@ -145,6 +145,8 @@ dependencies {
     implementation project(':ae-bridge')
     implementation project(':miniupnp-bridge')
     implementation project(':quest-xr')
+    // PS1 spike (Beetle PSX HW via a minimal libretro frontend), debug builds only
+    debugImplementation project(':ps1-libretro')
     implementation project(':mupen64plus-audio-android')
     implementation project(':mupen64plus-video-gliden64')
     implementation project(':mupen64plus-video-glide64mk2')
