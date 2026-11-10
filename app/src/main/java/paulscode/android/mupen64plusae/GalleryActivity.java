@@ -40,6 +40,7 @@ import android.view.PointerIcon;
 import android.view.View;
 import android.widget.LinearLayout;
 import android.widget.CheckBox;
+import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.ImageView;
@@ -390,6 +391,7 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
         mRootLayout = findViewById( R.id.drawerLayout );
         setupQuestRail();
         setupQuestAddRoms();
+        fitQuestHeaderToWidth();
 
         // find the retained fragment on activity restarts
         final FragmentManager fm = getSupportFragmentManager();
@@ -1150,6 +1152,39 @@ public class GalleryActivity extends AppCompatActivity implements PromptConfirmL
             this.summary = summary;
             this.action = action;
         }
+    }
+
+    /**
+     * Narrow panels (Quest 1 opens apps at 400 x 640) cannot fit the title next to the search pill,
+     * which squeezes the title to zero width and pushes the grid off-screen. Stack them instead.
+     */
+    private void fitQuestHeaderToWidth()
+    {
+        final float density = getResources().getDisplayMetrics().density;
+        final float headerWidth = getResources().getConfiguration().screenWidthDp * density
+                - getResources().getDimension(R.dimen.quest_rail_width)
+                - 2 * getResources().getDimension(R.dimen.quest_slab_inset);
+        final float neededWidth = getResources().getDimension(R.dimen.quest_search_width)
+                + getResources().getDimension(R.dimen.quest_header_title_min);
+        if (headerWidth >= neededWidth) {
+            return;
+        }
+
+        final LinearLayout row = findViewById(R.id.questHeaderRow);
+        row.setOrientation(LinearLayout.VERTICAL);
+        row.setGravity(Gravity.START);
+
+        final View titleColumn = findViewById(R.id.questTitleColumn);
+        final LinearLayout.LayoutParams titleParams = (LinearLayout.LayoutParams) titleColumn.getLayoutParams();
+        titleParams.width = ViewGroup.LayoutParams.MATCH_PARENT;
+        titleParams.weight = 0;
+        titleColumn.setLayoutParams(titleParams);
+
+        final View searchPill = findViewById(R.id.questSearchPill);
+        final LinearLayout.LayoutParams searchParams = (LinearLayout.LayoutParams) searchPill.getLayoutParams();
+        searchParams.width = ViewGroup.LayoutParams.MATCH_PARENT;
+        searchParams.topMargin = (int) getResources().getDimension(R.dimen.quest_gap_min);
+        searchPill.setLayoutParams(searchParams);
     }
 
     /** Quest rail: every top-level destination stays visible, nothing is nested in a drawer. */

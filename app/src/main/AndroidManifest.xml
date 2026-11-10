@@ -74,6 +74,8 @@
             android:label="@string/SplashActivity_title"
             android:theme="@style/Theme.Mupen64plusaeTheme.NoActionBar"
             android:exported="true">
+            <!-- Meta Quest sizes the panel from the launched activity, so the slab size must sit here too -->
+            <layout android:defaultWidth="@dimen/quest_slab_width" android:defaultHeight="@dimen/quest_slab_height" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
